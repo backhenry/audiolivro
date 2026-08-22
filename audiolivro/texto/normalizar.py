@@ -302,12 +302,12 @@ _CONTEXTO_ROMANO = (
     r"guerra|d[ée]cada|artigo|anexo|figura|tabela|classe|tipo|fase|rodada"
 )
 _RE_ROMANO = re.compile(
-    rf"\b(?P<palavra>{_CONTEXTO_ROMANO})\s+(?P<num>[IVXLCDM]{{1,8}})\b",
+    rf"\b(?P<palavra>{_CONTEXTO_ROMANO})\s+(?P<num>[IVXLCDM]{{1,15}})\b",
     re.IGNORECASE,
 )
 # Reis e papas: "Luís XIV", "João Paulo II" -> ordinal até dez, cardinal
 # depois, que é a convenção em português.
-_RE_ROMANO_NOME = re.compile(r"\b([A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-zà-ÿ]+)\s+([IVXLCDM]{1,8})\b")
+_RE_ROMANO_NOME = re.compile(r"\b([A-ZÁÉÍÓÚÂÊÔÃÕÇ][a-zà-ÿ]+)\s+([IVXLCDM]{1,15})\b")
 
 
 def converter_numeros(texto: str) -> str:

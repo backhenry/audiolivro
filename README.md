@@ -877,7 +877,11 @@ Os testes cobrem as regras que codificam julgamento e que regrediriam em
 silêncio: a regra do "e" nos números, a concordância de gênero, a
 decisão de manter ou juntar cada hífen de fim de linha, a detecção de
 cabeçalho, a ordem das conversões numéricas e a validação de caminho na
-exclusão de projetos.
+exclusão de projetos. A camada de entrada também tem cobertura: os
+leitores de TXT, Markdown e EPUB montam seus blocos a partir de arquivos
+gerados durante o teste (um EPUB mínimo é construído em memória), e o
+leitor de PDF exercita a extração geométrica com páginas desenhadas
+na hora — tudo offline, sem rede.
 
 ### Adicionando um motor de voz
 
