@@ -12,6 +12,7 @@ import pytest
 from audiolivro.texto.normalizar import (
     converter_numeros,
     juntar_letras_espacadas,
+    parece_espacado,
     expandir_abreviacoes,
     limpar,
     normalizar,
@@ -192,3 +193,8 @@ def test_par_de_letras_so_junta_com_o_espacamento_provado() -> None:
 
 def test_titulo_espacado_chega_falavel_no_motor() -> None:
     assert normalizar("C A P Í T U L O  I I I") == "CAPÍTULO três."
+
+
+def test_parece_espacado_reconhece_a_sequencia() -> None:
+    assert parece_espacado("C A P Í T U L O")
+    assert not parece_espacado("Ele viu a casa")

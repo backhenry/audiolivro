@@ -64,6 +64,11 @@ _RE_LETRAS_ESPACADAS = _regra(3)
 _RE_LETRAS_ESPACADAS_PAR = _regra(2)
 
 
+def parece_espacado(texto: str) -> bool:
+    """O texto tem uma sequência de letras isoladas — "C A P Í T U L O"?"""
+    return bool(_RE_LETRAS_ESPACADAS.search(texto))
+
+
 def juntar_letras_espacadas(texto: str) -> str:
     """Reverte o espaçamento de letra da diagramação: "C A P Í T U L O".
 

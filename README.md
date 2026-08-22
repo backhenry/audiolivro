@@ -588,7 +588,8 @@ um capítulo em menos de um segundo.
 Toda voz sintética erra nome próprio, sigla incomum e palavra
 estrangeira. Este projeto trata isso como caso normal, não como falha.
 
-**Na interface:** Alt + clique na frase, no player. Abre o texto que vai
+**Na interface:** passe o mouse sobre a frase, no player, e clique no
+botão **✎ editar** que aparece. O atalho é ⌥ (Option) + clique. Abre o texto que vai
 para a voz — já com os números por extenso. Escreva foneticamente:
 
 ```
@@ -633,6 +634,7 @@ diálogo que abre tem três saídas:
 | | |
 |---|---|
 | **Salvar** | reescreve o texto que vai para a voz |
+| *(passe o mouse)* | o botão **✎ editar** aparece no fim da frase |
 | **Não ler esta frase** | tira só ela |
 | **Não ler o parágrafo** | tira o bloco inteiro, que é o caso mais comum |
 
@@ -735,7 +737,10 @@ os projetos.
 - **frases longas** partidas em pontos onde um leitor humano respiraria;
 - **títulos com letra espaçada**: "C A P Í T U L O  I I I", que o
   diagramador usou para dar ar à página, vira "capítulo três" em vez de
-  ser soletrado letra por letra.
+  ser soletrado letra por letra. Em PDF, os limites de palavra são
+  recuperados medindo a distância entre os glifos, então "A T E L I Ê D E
+  F R A G R Â N C I A" volta a ser "ATELIÊ DE FRAGRÂNCIA" e não
+  "ATELIÊDEFRAGRÂNCIA".
 
 ### Em PDF
 

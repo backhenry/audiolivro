@@ -109,6 +109,7 @@
     <button id="ouvir-pronto" hidden>Ouvir o que já existe</button>
     <button id="cancelar" hidden>Cancelar</button>
     <span class="espaco"></span>
+    <button class="discreto" id="reextrair" title="Relê o arquivo original com a versão atual do extrator">Reextrair do original</button>
     <button class="discreto" id="trocar-livro">← meus livros</button>
   </div>
 
@@ -134,7 +135,10 @@
       <button class="discreto" id="o-voltar">← meus livros</button>
       <button id="o-refazer" hidden>Refazer o áudio</button>
     </div>
-    <p class="dica-editar">Alt+clique numa frase para corrigir como ela é lida.</p>
+    <p class="dica-editar">
+      Passe o mouse sobre uma frase para corrigir como ela é lida.<br>
+      Atalho: <kbd>⌥</kbd> + clique.
+    </p>
     <ol id="o-sumario"></ol>
   </aside>
 
@@ -183,6 +187,8 @@
     <button class="principal" id="editor-salvar">Salvar</button>
   </div>
 </dialog>
+
+<button id="editar-flutuante" hidden title="Corrigir como esta frase é lida">✎ editar</button>
 
 <dialog id="exportar">
   <h3>Baixar o audiobook</h3>

@@ -170,6 +170,47 @@ def criar_app(estado: Estado | None = None) -> FastAPI:
             estado.adotar(projeto)
         return JSONResponse(_detalhe(projeto))
 
+    @app.post("/api/projetos/reextrair")
+    def reextrair(dados: dict = Body(...)) -> JSONResponse:
+        """Relê o arquivo original e substitui o texto do projeto.
+
+        Reenviar o mesmo livro cai no projeto existente de propósito, para
+        não perder as correções feitas nele. O efeito colateral é que uma
+        melhoria no extrator nunca alcança um projeto antigo. Esta é a
+        saída — e ela avisa, porque joga fora as correções manuais.
+        """
+        nome = dados.get("nome", "")
+        if estado.sintetizando and estado.projeto_do_job == nome:
+            raise HTTPException(409, "Este projeto está sendo sintetizado agora.")
+
+        projeto = _carregar(nome)
+        origem = projeto.original()
+        if origem is None:
+            raise HTTPException(
+                400,
+                "Este projeto não guardou o arquivo original, então não há "
+                "de onde reextrair. Suba o livro de novo como projeto novo.",
+            )
+
+        try:
+            livro = ingest.ler(
+                origem,
+                ocr=dados.get("ocr", "auto"),
+                ler_notas=bool(dados.get("notas", False)),
+            )
+        except Exception as erro:
+            raise HTTPException(400, f"Não consegui reler o original: {erro}") from erro
+        if not livro.falas():
+            raise HTTPException(400, "A releitura não achou texto nenhum.")
+
+        # O título vem do arquivo e pode ter mudado com o extrator novo,
+        # mas a pasta não é renomeada: o nome dela é a identidade do
+        # projeto, e trocá-la quebraria o marcador e as exportações.
+        projeto.livro = livro
+        projeto.gravar_livro()
+        estado.adotar(projeto)
+        return JSONResponse(_detalhe(projeto))
+
     @app.post("/api/fechar")
     def fechar() -> JSONResponse:
         with estado.trava:

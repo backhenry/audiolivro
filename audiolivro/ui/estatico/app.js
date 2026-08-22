@@ -320,6 +320,20 @@ function ligarPreparar() {
 
   $("trocar-livro").onclick = voltarParaLista;
   $("ouvir-pronto").onclick = abrirPlayer;
+  $("reextrair").onclick = async () => {
+    const ok = await confirmar(
+      "Reextrair o texto?",
+      "O arquivo original será lido de novo com a versão atual do extrator. " +
+      "Correções que você fez à mão no texto serão perdidas, e o áudio " +
+      "precisará ser gerado outra vez.",
+      "Reextrair");
+    if (!ok) return;
+    try {
+      entrarEmPreparar(await pedir("/api/projetos/reextrair", { nome: app.livro.nome }));
+    } catch (erro) {
+      falhar("erro-preparar", erro);
+    }
+  };
   $("gerar").onclick = gerar;
   $("cancelar").onclick = () => app.tarefa && pedir(`/api/tarefa/${app.tarefa}/cancelar`, {});
 }
@@ -581,6 +595,51 @@ function ligarOuvir() {
   });
 
   ligarEditor();
+  ligarBotaoDeEditar();
+}
+
+/* O botão de editar aparece ao passar o mouse sobre a frase.
+ *
+ * A edição era só ⌥+clique, e uma tecla modificadora que nada na tela
+ * menciona é o mesmo que não existir. Agora o atalho continua, mas há
+ * uma porta visível: quem passa o mouse descobre sozinho.
+ *
+ * Um botão só, reposicionado, em vez de um por frase — um livro tem
+ * milhares delas. */
+function ligarBotaoDeEditar() {
+  const botao = $("editar-flutuante");
+  let alvo = null;
+
+  const esconder = () => { botao.hidden = true; alvo = null; };
+
+  $("texto").addEventListener("mouseover", (e) => {
+    const span = e.target.closest(".fala");
+    if (!span || span === alvo) return;
+    alvo = span;
+    const caixas = span.getClientRects();
+    const fim = caixas[caixas.length - 1];
+    if (!fim) return esconder();
+    botao.hidden = false;
+    // Ancorado no fim da frase e acima dela, para não tapar o texto que
+    // se está lendo nem o começo da frase seguinte.
+    botao.style.left = Math.min(fim.right + 6, innerWidth - 90) + "px";
+    botao.style.top = Math.max(fim.top - 26, 6) + "px";
+  });
+
+  // Sair do texto esconde, mas passar por cima do próprio botão não —
+  // senão ele some justamente quando se vai clicar nele.
+  $("texto").addEventListener("mouseleave", (e) => {
+    if (e.relatedTarget !== botao) esconder();
+  });
+  botao.addEventListener("mouseleave", esconder);
+  $("palco").addEventListener("scroll", esconder, { passive: true });
+
+  botao.onclick = () => {
+    if (!alvo) return;
+    const fala = app.todas.find((f) => f.id === alvo.dataset.id);
+    esconder();
+    if (fala) abrirEditor(fala);
+  };
 }
 
 function indiceEm(t) {
@@ -729,6 +788,7 @@ function ligarEditor() {
 }
 
 function abrirEditor(fala) {
+  $("editar-flutuante").hidden = true;
   emEdicao = fala;
   $("editor-texto").value = fala.falado;
   $("editor-pular").textContent = fala.ler ? "Não ler esta frase" : "Voltar a ler";

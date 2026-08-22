@@ -157,3 +157,44 @@ def test_linhas_viram_paragrafos_pela_linha_curta() -> None:
     paragrafos = juntar_linhas(linhas)
     assert len(paragrafos) == 2
     assert paragrafos[0].endswith("Depois voltou.")
+
+
+# -- reconstrução de título espaçado, por geometria ----------------------
+
+
+def _glifos(texto: str, vao_letra: float = 1.7, vao_palavra: float = 5.3) -> list[dict]:
+    """Caracteres com posição, como o PyMuPDF os entrega.
+
+    Os vãos são os medidos num livro real: 1,7 ponto entre letras da mesma
+    palavra, 5,3 entre palavras.
+    """
+    chars, x = [], 0.0
+    for i, c in enumerate(texto):
+        if c == " ":
+            continue
+        largura = 6.0
+        chars.append({"c": c, "bbox": (x, 0.0, x + largura, 10.0)})
+        proximo = texto[i + 1 : i + 2]
+        x += largura + (vao_palavra if proximo == " " else vao_letra)
+    return chars
+
+
+def test_titulo_espacado_recupera_os_limites_de_palavra() -> None:
+    """A regra textual não tem como saber onde a palavra terminou.
+
+    "A T E L I Ê D E F R A G R Â N C I A" chega com um espaço entre cada
+    letra, e juntar tudo daria "ATELIÊDEFRAGRÂNCIA". A informação está na
+    posição dos glifos: os dois tipos de vão são nitidamente diferentes.
+    """
+    from audiolivro.ingest.pdf import _reespacar
+
+    assert _reespacar(_glifos("ATELIÊ DE FRAGRÂNCIA")) == "ATELIÊ DE FRAGRÂNCIA"
+    assert _reespacar(_glifos("O FOGO DOMÉSTICO")) == "O FOGO DOMÉSTICO"
+    assert _reespacar(_glifos("CINÉREA")) == "CINÉREA"
+
+
+def test_reespacar_desiste_do_que_e_curto_demais() -> None:
+    from audiolivro.ingest.pdf import _reespacar
+
+    # Poucos glifos não dão mediana confiável; melhor não mexer.
+    assert _reespacar(_glifos("ABC")) is None

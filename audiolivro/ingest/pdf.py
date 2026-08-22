@@ -31,7 +31,7 @@ from statistics import median
 from audiolivro.ingest.ocr import OCRIndisponivel, disponivel as ocr_disponivel, reconhecer
 from audiolivro.texto import coerencia
 from audiolivro.texto.estrutura import BlocoBruto, parece_titulo
-from audiolivro.texto.normalizar import juntar_letras_espacadas
+from audiolivro.texto.normalizar import juntar_letras_espacadas, parece_espacado
 
 # Abaixo disso a página é imagem: o extrator devolveu quase nada porque
 # não há texto embutido, só o retrato de uma página impressa.
@@ -139,21 +139,62 @@ def _ler_pagina(doc, indice: int, *, modo_ocr: str) -> Pagina:
     return Pagina(indice, caixa.width, caixa.height, linhas)
 
 
+def _reespacar(chars: list[dict]) -> str | None:
+    """Refaz o texto de uma linha espaçada, medindo os vãos entre glifos.
+
+    Num título espaçado, a extração entrega "A T E L I Ê D E F R A G R Â N
+    C I A": ela vê os vãos entre letras e põe um espaço em todos, perdendo
+    quais eram o fim de uma palavra. Juntar tudo, como faz a regra
+    puramente textual, produz "ATELIÊDEFRAGRÂNCIA".
+
+    A informação não se perdeu, só foi ignorada: o PDF guarda a posição de
+    cada caractere, e os dois tipos de vão são nitidamente diferentes.
+    Medido num livro real, as letras de uma palavra ficam a 1,67 pontos e
+    as palavras a 5,30 — uma separação limpa, que a mediana encontra sem
+    precisar de valor fixo, seja qual for o corpo da fonte.
+    """
+    visiveis = [c for c in chars if c.get("c", "").strip()]
+    if len(visiveis) < 4:
+        return None
+
+    vaos = [
+        b["bbox"][0] - a["bbox"][2] for a, b in zip(visiveis, visiveis[1:])
+    ]
+    tipico = median(vaos)
+    if tipico <= 0:
+        return None
+
+    limiar = tipico * 1.6
+    pedacos = [visiveis[0].get("c", "")]
+    for vao, c in zip(vaos, visiveis[1:]):
+        if vao > limiar:
+            pedacos.append(" ")
+        pedacos.append(c.get("c", ""))
+    return "".join(pedacos)
+
+
 def _linhas_embutidas(pagina) -> list[Linha]:
-    dados = pagina.get_text("dict")
+    # `rawdict` traz a posição de cada caractere, e não só a do span. É o
+    # que permite recuperar os limites de palavra num título espaçado.
+    dados = pagina.get_text("rawdict")
     linhas: list[Linha] = []
     for bloco in dados.get("blocks", []):
         if bloco.get("type") != 0:  # 0 = texto; 1 = imagem
             continue
         for linha in bloco.get("lines", []):
             spans = linha.get("spans", [])
-            texto = "".join(s.get("text", "") for s in spans).strip()
+            chars = [c for s in spans for c in s.get("chars", [])]
+            texto = "".join(c.get("c", "") for c in chars).strip()
             if not texto:
                 continue
+            if parece_espacado(texto):
+                reescrito = _reespacar(chars)
+                if reescrito:
+                    texto = reescrito
             # O tamanho da linha é o do span mais longo, não a média: uma
             # capitular ou um expoente puxariam a média e a linha inteira
             # seria classificada errado.
-            principal = max(spans, key=lambda s: len(s.get("text", "")))
+            principal = max(spans, key=lambda s: len(s.get("chars", [])))
             x0, y0, x1, y1 = linha["bbox"]
             linhas.append(
                 Linha(
