@@ -211,6 +211,29 @@ def criar_app(estado: Estado | None = None) -> FastAPI:
         estado.adotar(projeto)
         return JSONResponse(_detalhe(projeto))
 
+    @app.post("/api/capitulo-falas")
+    def falas_do_capitulo(dados: dict = Body(...)) -> JSONResponse:
+        """Todas as falas de um capítulo, para revisar antes de sintetizar.
+
+        Carregadas por capítulo, e não com o livro inteiro: um livro tem
+        milhares de falas, e mandar todas de uma vez para a tela de
+        conferência a deixaria lenta justamente onde o usuário está
+        decidindo se vale gastar horas de síntese.
+        """
+        projeto = estado.exigir()
+        alvo = str(dados.get("id", ""))
+        for capitulo in projeto.livro.capitulos:
+            if capitulo.id != alvo:
+                continue
+            return JSONResponse([
+                {
+                    "id": f.id, "bloco": b.id, "tipo": b.tipo,
+                    "texto": f.texto, "exibicao": f.exibicao, "ler": f.ler,
+                }
+                for b in capitulo.blocos for f in b.falas
+            ])
+        raise HTTPException(404, f"Capítulo {alvo} não existe.")
+
     @app.post("/api/fechar")
     def fechar() -> JSONResponse:
         with estado.trava:

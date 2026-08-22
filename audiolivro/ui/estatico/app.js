@@ -318,6 +318,32 @@ function ligarPreparar() {
     }
   });
 
+  // Abrir um capítulo troca a amostra de três frases pela lista inteira,
+  // editável. Carregada só ao abrir: um livro tem milhares de falas, e
+  // mandar todas de uma vez deixaria lenta justamente a tela onde se
+  // decide se vale gastar horas de síntese.
+  $("p-sumario").addEventListener("toggle", async (e) => {
+    const item = e.target;
+    if (!item.open) return;
+    const caixa = item.querySelector(".amostra[data-carregar]");
+    if (!caixa) return;
+    const id = caixa.dataset.carregar;
+    delete caixa.dataset.carregar;
+    caixa.innerHTML = '<p class="carregando">carregando…</p>';
+    try {
+      desenharFalasDoCapitulo(caixa, await pedir("/api/capitulo-falas", { id }));
+    } catch (erro) {
+      caixa.innerHTML = `<p class="carregando">${escapar(erro.message)}</p>`;
+    }
+  }, true);
+
+  $("p-sumario").addEventListener("click", (e) => {
+    const linha = e.target.closest(".fala-revisao");
+    if (!linha) return;
+    const f = app.revisao?.[linha.dataset.id];
+    if (f) abrirEditor({ ...f, falado: f.texto });
+  });
+
   $("trocar-livro").onclick = voltarParaLista;
   $("ouvir-pronto").onclick = abrirPlayer;
   $("reextrair").onclick = async () => {
@@ -387,7 +413,9 @@ function desenharPreparar(livro) {
           <span>${escapar(c.titulo)}</span>
           <span class="dur">${c.ler ? `${c.falas} falas · ${hms(c.duracao)}` : "fora do áudio"}</span>
         </summary>
-        <div class="amostra">${c.amostra.map((t) => `<p>${escapar(t)}</p>`).join("")}</div>
+        <div class="amostra" data-carregar="${c.id}">${
+          c.amostra.map((t) => `<p>${escapar(t)}</p>`).join("")
+        }</div>
       </details>`)
     .join("");
 }
@@ -398,6 +426,15 @@ function desenharPreparar(livro) {
 async function voltarParaPreparar() {
   som.pause();
   entrarEmPreparar(app.livro);
+}
+
+function desenharFalasDoCapitulo(caixa, falas) {
+  app.revisao = app.revisao || {};
+  for (const f of falas) app.revisao[f.id] = f;
+  caixa.innerHTML = falas.length
+    ? falas.map((f) => `<p class="fala-revisao ${f.ler ? "" : "fora"}" data-id="${f.id}"
+         title="Clique para reescrever ou tirar do áudio">${escapar(f.texto)}</p>`).join("")
+    : '<p class="carregando">nada para ler neste capítulo</p>';
 }
 
 async function gerar() {
@@ -778,7 +815,14 @@ function ligarEditor() {
     try {
       await pedir("/api/fala", { id: emEdicao.id, texto });
       emEdicao.falado = texto;
-      emEdicao.el?.classList.add("corrigida");
+      if (app.revisao?.[emEdicao.id]) app.revisao[emEdicao.id].texto = texto;
+      for (const el of document.querySelectorAll(`[data-id="${emEdicao.id}"]`)) {
+        el.classList.add("corrigida");
+        // Na conferência o que se vê é o texto falado, então ele precisa
+        // refletir a correção na hora; no player o que se vê é o texto
+        // original do livro, que não muda.
+        if (el.classList.contains("fala-revisao")) el.textContent = texto;
+      }
       $("editor").close();
       marcarPendencia();
     } catch (erro) {
@@ -803,12 +847,20 @@ function abrirEditor(fala) {
 async function alternarLeitura(id, ler, bloco = false) {
   try {
     await pedir(bloco ? "/api/trecho" : "/api/fala", { id, ler });
-    const alvo = bloco ? app.todas.filter((f) => f.bloco === id)
-                       : app.todas.filter((f) => f.id === id);
-    for (const f of alvo) {
-      f.ler = ler;
-      f.el?.classList.toggle("fora", !ler);
-      if (f.el) f.el.title = ler ? "" : "fora do áudio";
+    // O mesmo diálogo serve ao player e à tela de conferência, que
+    // desenham a mesma fala em elementos diferentes. Em vez de manter
+    // duas listas em memória, marcamos pelo id no DOM: o que estiver na
+    // tela é atualizado, qualquer que seja a tela.
+    const ids = bloco
+      ? Object.values(app.revisao || {}).filter((f) => f.bloco === id).map((f) => f.id)
+        .concat((app.todas || []).filter((f) => f.bloco === id).map((f) => f.id))
+      : [id];
+    for (const alvo of new Set(ids)) {
+      for (const el of document.querySelectorAll(`[data-id="${alvo}"]`))
+        el.classList.toggle("fora", !ler);
+      if (app.revisao?.[alvo]) app.revisao[alvo].ler = ler;
+      const naTrilha = (app.todas || []).find((f) => f.id === alvo);
+      if (naTrilha) naTrilha.ler = ler;
     }
     $("editor").close();
     marcarPendencia();
@@ -821,6 +873,9 @@ async function alternarLeitura(id, ler, bloco = false) {
  * o usuário edita, não ouve diferença nenhuma e conclui que não funcionou. */
 function marcarPendencia() {
   app.pendentes = (app.pendentes || 0) + 1;
+  // O botão de refazer só faz sentido no player: quem está na tela de
+  // conferência ainda vai clicar em "Gerar" de qualquer jeito.
+  if ($("ouvir").hidden) return;
   const botao = $("o-refazer");
   botao.hidden = false;
   botao.textContent = `Refazer o áudio (${app.pendentes} ${

@@ -193,6 +193,17 @@ button.perigo:hover { background: var(--erro); border-color: var(--erro); color:
 .sumario details.fora .amostra { opacity: .4; }
 .sumario .amostra { padding: .3rem .2rem 1rem 2.5rem; color: var(--suave); font-size: .92rem; }
 .sumario .amostra p { margin: 0 0 .4rem; }
+.sumario .carregando { font-family: var(--sistema); font-size: .82rem; opacity: .7; }
+
+/* Cada fala da conferência é clicável: é aqui que se corrige o texto
+   antes de gastar horas sintetizando, e não só depois de ouvir. */
+.fala-revisao {
+  cursor: pointer; border-radius: 4px; padding: .12rem .3rem; margin-left: -.3rem;
+  transition: background .15s ease;
+}
+.fala-revisao:hover { background: var(--realce); color: var(--tinta); }
+.fala-revisao.fora { opacity: .38; text-decoration: line-through; }
+.fala-revisao.corrigida { border-bottom: 1px dashed var(--marca); }
 
 .escolhas {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));

@@ -628,6 +628,11 @@ seleção. Desmarque a ficha catalográfica e o índice, e eles saem do áudio.
 O contador de falas passa a mostrar "4 de 14", e a estimativa de duração
 cai junto.
 
+Abrindo um capítulo, você vê **todas as frases dele**, e cada uma é
+clicável: reescreva o texto que vai para a voz, ou tire a frase do áudio.
+É onde se conserta o livro antes de gastar horas sintetizando — que é
+melhor que descobrir o problema no meio da escuta.
+
 **Depois de ouvir**, no player, clique numa frase segurando **Alt**. O
 diálogo que abre tem três saídas:
 
