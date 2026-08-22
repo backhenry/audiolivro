@@ -1,0 +1,679 @@
+/* A interface, em três telas: abrir → preparar → ouvir.
+ *
+ * O estado de verdade mora no servidor — qual livro está aberto, se já
+ * foi sintetizado, onde parou a escuta. O navegador só desenha. Isso é o
+ * que faz recarregar a página no meio de uma síntese de duas horas
+ * mostrar a barra de progresso continuando, em vez de voltar para a tela
+ * inicial como se nada estivesse acontecendo.
+ */
+
+const $ = (id) => document.getElementById(id);
+const som = $("som");
+
+const app = {
+  livro: null,     // resumo vindo de /api/estado
+  texto: null,     // livro achatado, só depois de sintetizar
+  falas: [],       // ordenadas por início; o índice do destaque
+  capitulos: [],
+  atual: -1,
+  capAtual: -1,
+  seguirTexto: true,
+  tarefa: null,
+};
+
+iniciar();
+
+async function iniciar() {
+  ligarAbrir();
+  ligarListaDeProjetos();
+  ligarPreparar();
+  ligarOuvir();
+  await sincronizar();
+}
+
+/* Pergunta ao servidor o que existe e mostra a tela certa.
+ *
+ * A tela inicial é *sempre* a lista de projetos. A versão anterior
+ * entrava direto no último livro aberto, e abrir a interface caía no
+ * livro de ontem sem lista e sem saída óbvia. Entrar num projeto passou a
+ * ser sempre um clique.
+ *
+ * A única exceção é a síntese em andamento: aí há trabalho acontecendo
+ * que o usuário não pode perder de vista, e voltar para a tela de
+ * progresso é o que ele espera. */
+async function sincronizar() {
+  const estado = await pedir("/api/estado");
+  preencherVozes(estado.vozes, estado.motores);
+  // A lista de extensões aceitas tem apelidos (.md, .mdown, .markdown)
+  // que não dizem nada a mais para quem lê. O texto fixo do HTML é mais
+  // útil; só a guardamos para validar a extensão antes de subir.
+  app.formatos = estado.formatos;
+  app.projetos = estado.projetos;
+  $("onde-fica").textContent = `Os projetos ficam em ${estado.biblioteca}`;
+  $("p-destino").textContent = `Os projetos ficam em ${estado.biblioteca}`;
+
+  if (estado.retomar && estado.tarefa) {
+    const detalhe = await pedir("/api/projetos/abrir", { nome: estado.retomar });
+    entrarEmPreparar(detalhe);
+    $("gerar").disabled = true;
+    $("cancelar").hidden = false;
+    $("progresso").hidden = false;
+    app.tarefa = estado.tarefa.id;
+    acompanhar(estado.tarefa.id);
+    return;
+  }
+
+  desenharProjetos(estado.projetos);
+  mostrar("abrir");
+}
+
+function desenharProjetos(projetos) {
+  $("biblioteca").hidden = projetos.length === 0;
+  $("novo").open = projetos.length === 0;
+  $("conta-projetos").textContent =
+    projetos.length === 1 ? "1 livro" : `${projetos.length} livros`;
+
+  $("lista-projetos").innerHTML = projetos.map((p) => {
+    const selo = p.pronto
+      ? `<span class="selo pronto">pronto</span>`
+      : `<span class="selo rascunho">só texto</span>`;
+    const partes = [
+      p.autor,
+      p.pronto ? hms(p.duracao) : `${p.capitulos} capítulos`,
+      p.pronto ? p.voz : `${p.falas} falas`,
+      tamanho(p.tamanho),
+    ].filter(Boolean);
+    // Onde a escuta parou só vale mostrar se já saiu do começo e ainda
+    // não chegou ao fim — nos extremos é ruído.
+    const parcial = p.pronto && p.posicao > 30 && p.posicao < p.duracao - 30
+      ? `<span class="sep">·</span><span>parou em ${hms(p.posicao)}</span>` : "";
+    return `<li class="projeto" data-nome="${escapar(p.nome)}">
+      <div class="corpo" data-acao="abrir">
+        <div class="titulo">${escapar(p.titulo)}</div>
+        <div class="linha2">${
+          partes.map(escapar).map((t) => `<span>${t}</span>`).join('<span class="sep">·</span>')
+        }${parcial}</div>
+      </div>
+      ${selo}
+      <div class="acoes-projeto">
+        ${p.pronto ? '<button data-acao="finder" title="Mostrar no Finder">Finder</button>' : ""}
+        ${p.pronto ? '<button data-acao="limpar" title="Apagar só o áudio e o cache, mantendo o texto revisado">Refazer</button>' : ""}
+        <button class="perigo" data-acao="apagar" title="Apagar o projeto inteiro">Apagar</button>
+      </div>
+    </li>`;
+  }).join("") || `<p class="vazio">Nenhum livro ainda.</p>`;
+}
+
+function mostrar(tela) {
+  for (const nome of ["abrir", "preparar", "ouvir"]) $(nome).hidden = nome !== tela;
+}
+
+/* ================================================================ abrir */
+
+function ligarAbrir() {
+  const solta = $("solta");
+  const entrada = $("arquivo");
+
+  solta.onclick = () => entrada.click();
+  entrada.onchange = () => entrada.files[0] && enviar(entrada.files[0]);
+
+  // `dragover` precisa do preventDefault, senão o navegador abre o
+  // arquivo numa aba nova e a página some junto com o estado.
+  for (const evento of ["dragenter", "dragover"]) {
+    solta.addEventListener(evento, (e) => {
+      e.preventDefault();
+      solta.classList.add("sobre");
+    });
+  }
+  for (const evento of ["dragleave", "drop"]) {
+    solta.addEventListener(evento, () => solta.classList.remove("sobre"));
+  }
+  solta.addEventListener("drop", (e) => {
+    e.preventDefault();
+    const arquivo = e.dataTransfer.files[0];
+    if (arquivo) enviar(arquivo);
+  });
+  // Soltar fora da área também não pode navegar para fora.
+  addEventListener("dragover", (e) => e.preventDefault());
+  addEventListener("drop", (e) => e.preventDefault());
+
+  $("procurar").onclick = async () => {
+    const r = await pedir("/api/procurar", {});
+    if (r.cancelado) return;
+    $("caminho").value = r.caminho;
+    abrirPorCaminho(r.caminho);
+  };
+  $("abrir-caminho").onclick = () => abrirPorCaminho($("caminho").value.trim());
+  $("caminho").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") abrirPorCaminho($("caminho").value.trim());
+  });
+}
+
+async function enviar(arquivo) {
+  const extensao = arquivo.name.slice(arquivo.name.lastIndexOf(".")).toLowerCase();
+  if (app.formatos && !app.formatos.includes(extensao)) {
+    // Barrar aqui poupa subir um arquivo grande só para o servidor
+    // recusar por causa da extensão.
+    return falhar("erro-abrir", new Error(
+      `Não sei ler "${arquivo.name}". Aceito EPUB, PDF, TXT e Markdown.`));
+  }
+
+  const dados = new FormData();
+  dados.append("arquivo", arquivo);
+  dados.append("ocr", $("ocr").checked ? "sempre" : "auto");
+  dados.append("notas", $("notas").checked ? "true" : "false");
+
+  ocupado(true, `Lendo ${arquivo.name}…`);
+  try {
+    aceitar(await pedir("/api/enviar", dados));
+  } catch (erro) {
+    falhar("erro-abrir", erro);
+  } finally {
+    ocupado(false);
+  }
+}
+
+async function abrirPorCaminho(caminho) {
+  if (!caminho) return;
+  ocupado(true, "Lendo…");
+  try {
+    aceitar(await pedir("/api/abrir", {
+      caminho,
+      ocr: $("ocr").checked ? "sempre" : "auto",
+      notas: $("notas").checked,
+    }));
+  } catch (erro) {
+    falhar("erro-abrir", erro);
+  } finally {
+    ocupado(false);
+  }
+}
+
+function aceitar(detalhe) {
+  $("erro-abrir").hidden = true;
+  // Se o livro já tinha projeto, o servidor devolve o antigo em vez de
+  // criar uma cópia — com as correções de texto que já foram feitas nele.
+  entrarEmPreparar(detalhe);
+}
+
+/* Vai para a tela de ajustes. Um projeto que já tem áudio ganha o atalho
+ * de ouvir sem regerar — foi só reaberto, não precisa refazer nada. */
+function entrarEmPreparar(detalhe) {
+  app.livro = detalhe;
+  desenharPreparar(detalhe);
+  $("ouvir-pronto").hidden = !detalhe.pronto;
+  $("progresso").hidden = true;
+  $("erro-preparar").hidden = true;
+  restaurarBotoes();
+  mostrar("preparar");
+}
+
+async function abrirProjeto(nome) {
+  try {
+    const detalhe = await pedir("/api/projetos/abrir", { nome });
+    if (detalhe.pronto) return abrirPlayer();
+    entrarEmPreparar(detalhe);
+  } catch (erro) {
+    falhar("erro-abrir", erro);
+  }
+}
+
+function ocupado(sim, mensagem = "") {
+  const solta = $("solta");
+  solta.querySelector("strong").textContent = sim ? mensagem : "Solte o arquivo aqui";
+  solta.style.pointerEvents = sim ? "none" : "";
+  solta.style.opacity = sim ? ".6" : "";
+}
+
+/* Um só ouvinte para a lista inteira, com a ação no `data-acao`. Ligar um
+ * handler por botão obrigaria a religar tudo a cada redesenho. */
+function ligarListaDeProjetos() {
+  $("lista-projetos").addEventListener("click", async (e) => {
+    const alvo = e.target.closest("[data-acao]");
+    const item = e.target.closest(".projeto");
+    if (!alvo || !item) return;
+    const nome = item.dataset.nome;
+    const projeto = app.projetos.find((p) => p.nome === nome);
+
+    try {
+      if (alvo.dataset.acao === "abrir") return abrirProjeto(nome);
+      if (alvo.dataset.acao === "finder") return pedir("/api/revelar", { nome });
+
+      if (alvo.dataset.acao === "limpar") {
+        const ok = await confirmar(
+          "Apagar o áudio?",
+          `O áudio e o cache de "${projeto.titulo}" serão apagados. ` +
+          "O texto já revisado fica, e você pode gerar de novo com outra voz.",
+          "Apagar o áudio");
+        if (!ok) return;
+        await pedir("/api/projetos/apagar-audio", { nome });
+      } else {
+        const ok = await confirmar(
+          "Apagar o projeto?",
+          `"${projeto.titulo}" será apagado por inteiro — texto, áudio, ` +
+          `correções e cache (${tamanho(projeto.tamanho)}). Não dá para desfazer.`,
+          "Apagar tudo");
+        if (!ok) return;
+        await pedir("/api/projetos/apagar", { nome });
+      }
+      await sincronizar();
+    } catch (erro) {
+      falhar("erro-abrir", erro);
+    }
+  });
+}
+
+/* Confirmação em diálogo, não em `confirm()`: o nativo não deixa nomear o
+ * botão, e "OK" para apagar um livro inteiro não diz o que vai acontecer. */
+function confirmar(titulo, texto, rotulo) {
+  $("confirmar-titulo").textContent = titulo;
+  $("confirmar-texto").textContent = texto;
+  $("confirmar-sim").textContent = rotulo;
+  const dialogo = $("confirmar");
+  dialogo.showModal();
+  return new Promise((resolver) => {
+    const fim = (resposta) => {
+      dialogo.close();
+      $("confirmar-sim").onclick = $("confirmar-nao").onclick = null;
+      resolver(resposta);
+    };
+    $("confirmar-sim").onclick = () => fim(true);
+    $("confirmar-nao").onclick = () => fim(false);
+    dialogo.addEventListener("cancel", () => fim(false), { once: true });
+  });
+}
+
+/* ============================================================= preparar */
+
+function ligarPreparar() {
+  $("trocar-livro").onclick = voltarParaLista;
+  $("ouvir-pronto").onclick = abrirPlayer;
+  $("gerar").onclick = gerar;
+  $("cancelar").onclick = () => app.tarefa && pedir(`/api/tarefa/${app.tarefa}/cancelar`, {});
+}
+
+/* Volta para a lista. Fecha o projeto no servidor antes: é lá que o
+ * estado mora, e sem fechar a próxima carga voltaria para cá. */
+async function voltarParaLista() {
+  som.pause();
+  som.removeAttribute("src");
+  await pedir("/api/fechar", {});
+  await sincronizar();
+}
+
+function preencherVozes(vozes, motores) {
+  if (!vozes.length) {
+    $("voz").innerHTML = "<option>nenhuma voz disponível</option>";
+    $("gerar").disabled = true;
+    return;
+  }
+  // A ordem de `motores` já é a de preferência do servidor, então a
+  // primeira opção da lista é a melhor voz que esta máquina tem.
+  const ordenadas = [...vozes].sort(
+    (a, b) => motores.indexOf(a.motor) - motores.indexOf(b.motor)
+  );
+  $("voz").innerHTML = ordenadas
+    .map((v) => {
+      const detalhes = [v.motor, v.genero, v.idioma].filter(Boolean).join(" · ");
+      return `<option value="${v.motor}:${v.id}">${escapar(v.nome)} — ${escapar(detalhes)}</option>`;
+    })
+    .join("");
+}
+
+function desenharPreparar(livro) {
+  $("p-titulo").textContent = livro.titulo;
+  $("p-autor").textContent = [livro.autor, livro.origem && `de ${livro.origem}`]
+    .filter(Boolean).join(" · ");
+  $("p-capitulos").textContent = livro.capitulos;
+  $("p-falas").textContent = livro.falas.toLocaleString("pt-BR");
+  $("p-duracao").textContent = hms(livro.previsao.duracao_audio);
+  $("p-tempo").textContent = "~" + hms(livro.previsao.tempo_de_sintese);
+  $("p-tamanho").textContent = Math.round(livro.previsao.tamanho_m4b / 1e6) + " MB";
+
+  $("p-sumario").innerHTML = livro.estrutura
+    .map((c, i) => `<details>
+        <summary>
+          <span class="n">${i + 1}</span>
+          <span>${escapar(c.titulo)}</span>
+          <span class="dur">${c.falas} falas · ${hms(c.duracao)}</span>
+        </summary>
+        <div class="amostra">${c.amostra.map((t) => `<p>${escapar(t)}</p>`).join("")}</div>
+      </details>`)
+    .join("");
+}
+
+/* Volta do player para a tela de ajustes — depois de corrigir uma frase,
+ * ou só para trocar de voz. O cache faz a segunda geração custar apenas
+ * as falas que mudaram. */
+async function voltarParaPreparar() {
+  som.pause();
+  entrarEmPreparar(app.livro);
+}
+
+async function gerar() {
+  $("erro-preparar").hidden = true;
+  $("gerar").disabled = true;
+  $("cancelar").hidden = false;
+  $("progresso").hidden = false;
+
+  const [motor, voz] = $("voz").value.split(":");
+  try {
+    const tarefa = await pedir("/api/sintetizar", {
+      motor, voz,
+      velocidade: +$("velocidade-sintese").value,
+      pausas: +$("pausas").value,
+      formato: $("formato").value,
+    });
+    app.tarefa = tarefa.id;
+    await acompanhar(tarefa.id);
+  } catch (erro) {
+    falhar("erro-preparar", erro);
+    restaurarBotoes();
+  }
+}
+
+/* Sonda o estado do trabalho. Sondagem, e não fluxo de eventos, porque
+ * recarregar a página no meio precisa reencontrar o progresso — e um
+ * fluxo perdido não se recupera. */
+async function acompanhar(id) {
+  for (;;) {
+    const tarefa = await pedir(`/api/tarefa/${id}`);
+    $("p-cheio").style.width = tarefa.progresso * 100 + "%";
+    $("p-mensagem").textContent = tarefa.mensagem;
+    $("p-percentual").textContent = Math.round(tarefa.progresso * 100) + "%";
+
+    if (tarefa.situacao === "concluido") {
+      // O projeto agora tem áudio; sem atualizar isto, voltar para os
+      // ajustes esconderia o botão de ouvir o que acabou de ser gerado.
+      if (app.livro) app.livro.pronto = true;
+      return abrirPlayer();
+    }
+    if (tarefa.situacao === "erro") {
+      falhar("erro-preparar", new Error(tarefa.erro));
+      return restaurarBotoes();
+    }
+    if (tarefa.situacao === "cancelado") {
+      $("p-mensagem").textContent = "cancelado";
+      return restaurarBotoes();
+    }
+    await pausa(600);
+  }
+}
+
+function restaurarBotoes() {
+  $("gerar").disabled = false;
+  $("cancelar").hidden = true;
+  app.tarefa = null;
+}
+
+/* ================================================================ ouvir */
+
+async function abrirPlayer() {
+  app.texto = await pedir("/api/texto");
+  mostrar("ouvir");
+
+  $("o-titulo").textContent = app.texto.titulo;
+  $("o-autor").textContent = [app.texto.autor, app.texto.voz].filter(Boolean).join(" · ");
+  document.title = app.texto.titulo + " — audiolivro";
+
+  desenharTexto(app.texto);
+  desenharSumario(app.texto);
+  $("o-marcas").innerHTML = app.texto.capitulos
+    .map((c) => `<i style="left:${(c.inicio / app.texto.duracao) * 100}%"></i>`)
+    .join("");
+
+  som.src = "/audio?" + Date.now();  // evita o cache depois de re-sintetizar
+  const pos = await pedir("/api/posicao");
+  som.addEventListener("loadedmetadata", () => {
+    if (pos.segundo > 0) som.currentTime = pos.segundo;
+  }, { once: true });
+  if (pos.velocidade) {
+    som.playbackRate = pos.velocidade;
+    $("o-velocidade").value = pos.velocidade;
+  }
+  atualizar();
+}
+
+function desenharTexto(livro) {
+  const alvo = $("texto");
+  const pedacos = [];
+  for (const cap of livro.capitulos) {
+    pedacos.push(`<h2 class="cap-titulo" id="${cap.id}">${escapar(cap.titulo)}</h2>`);
+    for (const bloco of cap.blocos) {
+      if (bloco.tipo === "titulo") continue;  // já virou o cabeçalho acima
+      const spans = bloco.falas
+        .map((f) => `<span class="fala" data-id="${f.id}">${escapar(f.texto)}</span>`)
+        .join(" ");
+      pedacos.push(`<p class="bloco ${bloco.tipo}">${spans}</p>`);
+    }
+  }
+  alvo.innerHTML = pedacos.join("");
+
+  app.capitulos = livro.capitulos.map((c) => ({ titulo: c.titulo, inicio: c.inicio }));
+  app.falas = [];
+  for (const cap of livro.capitulos)
+    for (const bloco of cap.blocos)
+      for (const f of bloco.falas)
+        app.falas.push({ ...f, el: alvo.querySelector(`[data-id="${f.id}"]`) });
+  app.falas.sort((a, b) => a.inicio - b.inicio);
+  app.atual = -1;
+}
+
+function desenharSumario(livro) {
+  $("o-sumario").innerHTML = livro.capitulos
+    .map((c, i) => `<li><a data-i="${i}"><span class="n">${i + 1}</span><span>${escapar(c.titulo)}</span></a></li>`)
+    .join("");
+}
+
+function ligarOuvir() {
+  $("o-sumario").onclick = (e) => {
+    const a = e.target.closest("a");
+    if (!a) return;
+    som.currentTime = app.capitulos[+a.dataset.i].inicio;
+    som.play();
+  };
+
+  $("texto").addEventListener("click", (e) => {
+    const span = e.target.closest(".fala");
+    if (!span) return;
+    const fala = app.falas.find((f) => f.id === span.dataset.id);
+    if (!fala) return;
+    // Clique pula para a frase; com Alt, abre a correção do texto falado.
+    if (e.altKey) return abrirEditor(fala);
+    som.currentTime = fala.inicio;
+    som.play();
+  });
+
+  $("o-tocar").onclick = () => (som.paused ? som.play() : som.pause());
+  $("o-voltar15").onclick = () => (som.currentTime = Math.max(0, som.currentTime - 15));
+  $("o-avancar15").onclick = () => (som.currentTime += 15);
+  $("o-velocidade").onchange = (e) => { som.playbackRate = +e.target.value; guardar(); };
+  $("o-revelar").onclick = () => pedir("/api/revelar", {});
+  $("o-voltar").onclick = voltarParaLista;
+  $("o-refazer").onclick = voltarParaPreparar;
+
+  $("o-trilho").onclick = (e) => {
+    const caixa = e.currentTarget.getBoundingClientRect();
+    som.currentTime = ((e.clientX - caixa.left) / caixa.width) * (som.duration || 0);
+  };
+
+  som.addEventListener("timeupdate", atualizar);
+  som.addEventListener("loadedmetadata", atualizar);
+  som.addEventListener("play", () => ($("o-tocar").textContent = "❙❙ Pausar"));
+  som.addEventListener("pause", () => { $("o-tocar").textContent = "▶︎ Ouvir"; guardar(); });
+
+  // Quem rola o texto com a mão está procurando alguma coisa; continuar
+  // arrastando a página atrás do áudio nesse momento é brigar com ele. A
+  // perseguição volta sozinha quando a frase que soa reaparece.
+  $("palco").addEventListener("wheel", () => {
+    app.seguirTexto = false;
+    clearTimeout(app._retomar);
+    app._retomar = setTimeout(() => (app.seguirTexto = true), 6000);
+  }, { passive: true });
+
+  document.addEventListener("keydown", (e) => {
+    if ($("ouvir").hidden) return;
+    if (["SELECT", "INPUT", "TEXTAREA"].includes(e.target.tagName)) return;
+    const teclas = {
+      " ": () => (som.paused ? som.play() : som.pause()),
+      k: () => (som.paused ? som.play() : som.pause()),
+      ArrowLeft: () => (som.currentTime -= 15),
+      ArrowRight: () => (som.currentTime += 15),
+      j: () => (som.currentTime -= 15),
+      l: () => (som.currentTime += 15),
+      ArrowUp: () => irPara(-1),
+      ArrowDown: () => irPara(1),
+    };
+    if (teclas[e.key]) { e.preventDefault(); teclas[e.key](); }
+  });
+
+  ligarEditor();
+}
+
+function indiceEm(t) {
+  let lo = 0, hi = app.falas.length - 1, achado = 0;
+  while (lo <= hi) {
+    const meio = (lo + hi) >> 1;
+    if (app.falas[meio].inicio <= t) { achado = meio; lo = meio + 1; } else hi = meio - 1;
+  }
+  return achado;
+}
+
+function atualizar() {
+  if (!app.falas.length) return;
+  const t = som.currentTime;
+  const total = som.duration || app.texto?.duracao || 1;
+  $("o-decorrido").style.width = (t / total) * 100 + "%";
+  $("o-tempo").textContent = `${hms(t)} / ${hms(total)}`;
+
+  const i = indiceEm(t);
+  if (i !== app.atual && app.falas[i]) {
+    app.falas[app.atual]?.el?.classList.remove("soando");
+    app.falas[i].el?.classList.add("soando");
+    app.atual = i;
+    if (app.seguirTexto && !som.paused) rolarAte(app.falas[i].el);
+  }
+
+  let c = 0;
+  while (c + 1 < app.capitulos.length && app.capitulos[c + 1].inicio <= t) c++;
+  if (c !== app.capAtual) {
+    app.capAtual = c;
+    $("o-capitulo").textContent = app.capitulos[c]?.titulo || "";
+    document.querySelectorAll("#o-sumario a").forEach((a, k) =>
+      a.classList.toggle("atual", k === c));
+  }
+}
+
+function rolarAte(el) {
+  if (!el) return;
+  const palco = $("palco");
+  const caixa = el.getBoundingClientRect();
+  const limite = palco.getBoundingClientRect();
+  // Só rola quando a frase saiu do terço confortável da tela. Rolar a
+  // cada frase deixa o texto em movimento perpétuo e faz perder a linha.
+  if (caixa.top < limite.top + 80 || caixa.bottom > limite.bottom - 160)
+    palco.scrollBy({ top: caixa.top - limite.top - limite.height * 0.34, behavior: "smooth" });
+}
+
+function irPara(passo) {
+  const i = Math.min(Math.max(app.atual + passo, 0), app.falas.length - 1);
+  som.currentTime = app.falas[i].inicio;
+}
+
+/* ------------------------------------------------------- corrigir texto */
+
+let emEdicao = null;
+
+function ligarEditor() {
+  $("editor-fechar").onclick = () => $("editor").close();
+  $("editor-salvar").onclick = async () => {
+    const texto = $("editor-texto").value.trim();
+    if (!texto || !emEdicao) return;
+    try {
+      await pedir("/api/fala", { id: emEdicao.id, texto });
+      emEdicao.falado = texto;
+      emEdicao.el?.classList.add("corrigida");
+      $("editor").close();
+      // A correção só vira som depois de refazer. Sem oferecer o botão
+      // aqui, o usuário corrige o texto, não ouve diferença nenhuma e
+      // conclui que a edição não funcionou.
+      app.corrigidas = (app.corrigidas || 0) + 1;
+      const botao = $("o-refazer");
+      botao.hidden = false;
+      botao.textContent = `Refazer o áudio (${app.corrigidas} ${
+        app.corrigidas === 1 ? "correção" : "correções"})`;
+    } catch (erro) {
+      alert(erro.message);
+    }
+  };
+}
+
+function abrirEditor(fala) {
+  emEdicao = fala;
+  $("editor-texto").value = fala.falado;
+  $("editor").showModal();
+}
+
+/* ------------------------------------------------------------ marcador */
+
+let ultimoGuardado = 0;
+function guardar() {
+  if ($("ouvir").hidden) return;
+  const agora = Date.now();
+  if (agora - ultimoGuardado < 2000) return;
+  ultimoGuardado = agora;
+  navigator.sendBeacon?.("/api/posicao", new Blob(
+    [JSON.stringify({ segundo: som.currentTime, velocidade: som.playbackRate })],
+    { type: "application/json" }));
+}
+setInterval(() => { if (!som.paused) guardar(); }, 5000);
+addEventListener("beforeunload", () => { ultimoGuardado = 0; guardar(); });
+
+/* --------------------------------------------------------- utilidades */
+
+async function pedir(url, corpo) {
+  const opcoes = corpo === undefined
+    ? {}
+    : corpo instanceof FormData
+      ? { method: "POST", body: corpo }
+      : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(corpo) };
+
+  const resposta = await fetch(url, opcoes);
+  if (!resposta.ok) {
+    // O FastAPI põe a mensagem em `detail`; sem ela, o status é tudo que
+    // temos, e mostrar "[object Object]" seria pior que o número.
+    let detalhe = `Erro ${resposta.status}`;
+    try {
+      const corpo = await resposta.json();
+      if (typeof corpo.detail === "string") detalhe = corpo.detail;
+    } catch { /* resposta sem JSON */ }
+    throw new Error(detalhe);
+  }
+  return resposta.json();
+}
+
+function falhar(id, erro) {
+  const caixa = $(id);
+  caixa.textContent = erro.message || String(erro);
+  caixa.hidden = false;
+}
+
+const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function hms(s) {
+  if (!isFinite(s) || s < 0) return "0:00";
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), g = Math.floor(s % 60);
+  return h ? `${h}h${String(m).padStart(2, "0")}` : `${m}:${String(g).padStart(2, "0")}`;
+}
+
+function tamanho(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1e6) return Math.round(bytes / 1e3) + " KB";
+  if (bytes < 1e9) return Math.round(bytes / 1e6) + " MB";
+  return (bytes / 1e9).toFixed(1).replace(".", ",") + " GB";
+}
+
+function escapar(t) {
+  return String(t ?? "").replace(/[&<>"]/g, (c) =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}

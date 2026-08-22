@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>audiolivro</title>
+<link rel="stylesheet" href="/estilo.css">
+</head>
+<body>
+
+<!-- ============================================================ abrir -->
+<section id="abrir" class="tela">
+  <div class="marca-dagua">
+    <h1>audiolivro</h1>
+    <p>Seus livros ficam aqui. Nada sai da sua máquina.</p>
+  </div>
+
+  <div class="biblioteca" id="biblioteca" hidden>
+    <div class="cabeca-lista">
+      <h2>Meus livros</h2>
+      <span id="conta-projetos"></span>
+    </div>
+    <ul id="lista-projetos"></ul>
+  </div>
+
+  <details class="novo" id="novo">
+    <summary><span class="mais">+</span> Livro novo</summary>
+
+    <div class="solta" id="solta">
+      <strong>Solte o arquivo aqui</strong>
+      <span>EPUB, PDF, PDF escaneado, TXT ou Markdown</span>
+      <input type="file" id="arquivo" hidden>
+    </div>
+
+    <div class="ou">ou</div>
+
+    <div class="fila">
+      <button id="procurar">Escolher no Finder…</button>
+      <input type="text" id="caminho" placeholder="ou cole um caminho: ~/Downloads/livro.epub">
+      <button id="abrir-caminho">Abrir</button>
+    </div>
+
+    <div class="opcoes">
+      <label><input type="checkbox" id="ocr"> Forçar OCR (PDF escaneado)</label>
+      <label><input type="checkbox" id="notas"> Ler notas de rodapé</label>
+    </div>
+  </details>
+
+  <div id="erro-abrir" class="erro" hidden></div>
+  <p class="aviso" id="onde-fica"></p>
+</section>
+
+<!-- ========================================================= preparar -->
+<section id="preparar" class="tela" hidden>
+  <div class="cabeca">
+    <h1 id="p-titulo">…</h1>
+    <p id="p-autor"></p>
+  </div>
+
+  <div class="numeros">
+    <div><span>Capítulos</span><strong id="p-capitulos">—</strong></div>
+    <div><span>Falas</span><strong id="p-falas">—</strong></div>
+    <div><span>Áudio</span><strong id="p-duracao">—</strong></div>
+    <div><span>Síntese</span><strong id="p-tempo">—</strong></div>
+    <div><span>Tamanho</span><strong id="p-tamanho">—</strong></div>
+  </div>
+
+  <p class="aviso">
+    Confira abaixo o que o extrator entendeu. Se um capítulo estiver
+    faltando ou a amostra vier truncada, é melhor descobrir agora.
+  </p>
+
+  <div class="sumario" id="p-sumario"></div>
+
+  <div class="escolhas">
+    <div>
+      <label for="voz">Voz</label>
+      <select id="voz"></select>
+    </div>
+    <div>
+      <label for="velocidade-sintese">Velocidade</label>
+      <select id="velocidade-sintese">
+        <option value="0.9">0,9×</option>
+        <option value="1" selected>1× (natural)</option>
+        <option value="1.1">1,1×</option>
+        <option value="1.2">1,2×</option>
+      </select>
+    </div>
+    <div>
+      <label for="pausas">Pausas</label>
+      <select id="pausas">
+        <option value="0.8">mais secas</option>
+        <option value="1" selected>normais</option>
+        <option value="1.3">mais longas</option>
+      </select>
+    </div>
+    <div>
+      <label for="formato">Formato</label>
+      <select id="formato">
+        <option value="m4b" selected>M4B com capítulos</option>
+        <option value="m4a">M4A</option>
+        <option value="mp3">MP3</option>
+      </select>
+    </div>
+  </div>
+
+  <div class="fila">
+    <button class="principal" id="gerar">Gerar audiobook</button>
+    <button id="ouvir-pronto" hidden>Ouvir o que já existe</button>
+    <button id="cancelar" hidden>Cancelar</button>
+    <span class="espaco"></span>
+    <button class="discreto" id="trocar-livro">← meus livros</button>
+  </div>
+
+  <div class="progresso" id="progresso" hidden>
+    <div class="trilho"><div class="cheio" id="p-cheio"></div></div>
+    <div class="rotulo">
+      <span id="p-mensagem">…</span>
+      <span id="p-percentual"></span>
+    </div>
+  </div>
+
+  <div id="erro-preparar" class="erro" hidden></div>
+
+  <p class="aviso" id="p-destino"></p>
+</section>
+
+<!-- ============================================================ ouvir -->
+<section id="ouvir" hidden>
+  <aside>
+    <h1 id="o-titulo">…</h1>
+    <p class="autor" id="o-autor"></p>
+    <div class="voltar">
+      <button class="discreto" id="o-voltar">← meus livros</button>
+      <button id="o-refazer" hidden>Refazer o áudio</button>
+    </div>
+    <p class="dica-editar">Alt+clique numa frase para corrigir como ela é lida.</p>
+    <ol id="o-sumario"></ol>
+  </aside>
+
+  <main id="palco"><div class="texto" id="texto"></div></main>
+
+  <footer>
+    <div class="trilho" id="o-trilho">
+      <div class="marcas" id="o-marcas"></div>
+      <div class="decorrido" id="o-decorrido"></div>
+    </div>
+    <div class="fila">
+      <button id="o-voltar15" title="15 segundos atrás (←)">−15s</button>
+      <button class="principal" id="o-tocar" title="Espaço">▶︎ Ouvir</button>
+      <button id="o-avancar15" title="15 segundos à frente (→)">+15s</button>
+      <span class="tempo" id="o-tempo">0:00 / 0:00</span>
+      <span class="espaco"></span>
+      <span class="agora" id="o-capitulo"></span>
+      <button class="discreto" id="o-revelar" title="Mostrar o arquivo no Finder">Finder</button>
+      <select id="o-velocidade" title="Velocidade">
+        <option value="0.8">0,8×</option>
+        <option value="0.9">0,9×</option>
+        <option value="1" selected>1×</option>
+        <option value="1.1">1,1×</option>
+        <option value="1.25">1,25×</option>
+        <option value="1.5">1,5×</option>
+        <option value="1.75">1,75×</option>
+        <option value="2">2×</option>
+      </select>
+    </div>
+  </footer>
+</section>
+
+<dialog id="editor">
+  <h3>Corrigir como esta frase é lida</h3>
+  <p class="dica">
+    O texto abaixo é o que vai para a voz — já com números por extenso.
+    Escreva foneticamente se precisar. A correção vale na próxima geração,
+    e só esta frase será refeita.
+  </p>
+  <textarea id="editor-texto"></textarea>
+  <div class="acoes">
+    <button id="editor-fechar">Cancelar</button>
+    <button class="principal" id="editor-salvar">Salvar</button>
+  </div>
+</dialog>
+
+<dialog id="confirmar">
+  <h3 id="confirmar-titulo">Apagar?</h3>
+  <p class="dica" id="confirmar-texto"></p>
+  <div class="acoes">
+    <button id="confirmar-nao">Cancelar</button>
+    <button class="perigo" id="confirmar-sim">Apagar</button>
+  </div>
+</dialog>
+
+<audio id="som" preload="metadata"></audio>
+<script src="/app.js"></script>
+</body>
+</html>
