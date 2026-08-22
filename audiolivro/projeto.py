@@ -125,7 +125,11 @@ class Projeto:
             "autor": self.livro.autor,
             "origem": (o.name if (o := self.original()) else ""),
             "capitulos": len(self.livro.capitulos),
-            "falas": len(self.livro.falas()),
+            # O que conta para quem vai gerar é o que vira som. O total
+            # aparece ao lado só quando difere, para o usuário saber que
+            # há coisa excluída e não achar que o livro veio truncado.
+            "falas": len(self.livro.audiveis()),
+            "falas_no_livro": len(self.livro.falas()),
             "pronto": audio is not None,
             "duracao": self.trilha.duracao if self.trilha else 0.0,
             "voz": f"{self.trilha.motor}:{self.trilha.voz}" if self.trilha else "",

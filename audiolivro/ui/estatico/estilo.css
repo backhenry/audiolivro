@@ -177,6 +177,7 @@ button.perigo:hover { background: var(--erro); border-color: var(--erro); color:
 }
 .numeros div span { display: block; font-size: .74rem; color: var(--suave); letter-spacing: .04em; text-transform: uppercase; }
 .numeros div strong { font-size: 1.15rem; font-weight: 600; }
+.numeros .fora-conta { font-size: .8rem; font-weight: 400; color: var(--suave); }
 
 .sumario { margin-bottom: 1.8rem; }
 .sumario details { border-bottom: 1px solid var(--linha); }
@@ -187,6 +188,9 @@ button.perigo:hover { background: var(--erro); border-color: var(--erro); color:
 .sumario summary::-webkit-details-marker { display: none; }
 .sumario summary .n { color: var(--suave); min-width: 1.8em; font-variant-numeric: tabular-nums; }
 .sumario summary .dur { margin-left: auto; color: var(--suave); font-size: .8rem; }
+.sumario summary input[type="checkbox"] { margin: 0 .1rem 0 0; cursor: pointer; }
+.sumario details.fora summary > span:not(.n) { opacity: .4; text-decoration: line-through; }
+.sumario details.fora .amostra { opacity: .4; }
 .sumario .amostra { padding: .3rem .2rem 1rem 2.5rem; color: var(--suave); font-size: .92rem; }
 .sumario .amostra p { margin: 0 0 .4rem; }
 
@@ -233,6 +237,8 @@ aside li a {
   font-family: var(--sistema); cursor: pointer;
 }
 aside li a:hover { background: var(--realce); }
+aside li a.sem-audio { opacity: .35; cursor: default; text-decoration: line-through; }
+aside li a.sem-audio:hover { background: none; }
 aside li a.atual {
   border-left: 3px solid var(--marca);
   padding-left: calc(1.25rem - 3px); font-weight: 600;
@@ -256,6 +262,10 @@ p.subtitulo { font-weight: 600; font-size: 1.1rem; margin-top: 2rem; }
 .fala:hover { background: var(--linha); }
 .fala.soando { background: var(--realce); box-shadow: 0 0 0 .18em var(--realce); }
 .fala.corrigida { border-bottom: 1px dashed var(--marca); }
+/* Excluída continua na tela, riscada: sumir com ela esconderia
+   justamente o que se quer conferir antes de gerar de novo. */
+.fala.fora { opacity: .38; text-decoration: line-through; }
+.fala.fora:hover { opacity: .7; }
 
 footer {
   position: fixed; left: 17rem; right: 0; bottom: 0; background: var(--barra);
@@ -283,7 +293,8 @@ dialog textarea {
   background: var(--papel); border: 1px solid var(--linha);
   border-radius: 8px; padding: .7rem;
 }
-dialog .acoes { display: flex; gap: .6rem; justify-content: flex-end; margin-top: 1rem; }
+dialog .acoes { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; flex-wrap: wrap; }
+dialog .acoes button { font-size: .82rem; }
 
 @media (max-width: 820px) {
   #ouvir { grid-template-columns: 1fr; }

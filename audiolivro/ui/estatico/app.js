@@ -49,6 +49,14 @@ async function sincronizar() {
   // útil; só a guardamos para validar a extensão antes de subir.
   app.formatos = estado.formatos;
   app.projetos = estado.projetos;
+  // Botão que não faz nada é pior que botão ausente: quem clica conclui
+  // que o programa está quebrado, não que o recurso não existe aqui.
+  $("procurar").hidden = !estado.seletor_nativo;
+  $("o-revelar").hidden = !estado.revelar;
+  const ocr = $("ocr").closest("label");
+  ocr.title = estado.ocr ? "" : "OCR indisponível neste sistema (usa o Vision do macOS)";
+  ocr.style.opacity = estado.ocr ? "" : ".45";
+  $("ocr").disabled = !estado.ocr;
   $("onde-fica").textContent = `Os projetos ficam em ${estado.biblioteca}`;
   $("p-destino").textContent = `Os projetos ficam em ${estado.biblioteca}`;
 
@@ -286,6 +294,30 @@ function confirmar(titulo, texto, rotulo) {
 /* ============================================================= preparar */
 
 function ligarPreparar() {
+  // A caixa está dentro do <summary>, que abre o <details> ao ser
+  // clicado. Sem o stopPropagation, marcar o capítulo abriria a amostra
+  // junto, e a lista inteira ficaria sanfonando a cada clique.
+  $("p-sumario").addEventListener("click", (e) => {
+    if (e.target.type === "checkbox") e.stopPropagation();
+  });
+  $("p-sumario").addEventListener("change", async (e) => {
+    const caixa = e.target;
+    if (caixa.type !== "checkbox") return;
+    try {
+      await pedir("/api/trecho", { id: caixa.dataset.id, ler: caixa.checked });
+      const detalhe = await pedir("/api/projetos/abrir", { nome: app.livro.nome });
+      app.livro = detalhe;
+      desenharPreparar(detalhe);
+      // Reabre o capítulo que o usuário estava olhando, para a lista não
+      // se fechar debaixo dele a cada marcação.
+      const item = $("p-sumario").querySelector(`details[data-id="${caixa.dataset.id}"]`);
+      if (item) item.open = true;
+    } catch (erro) {
+      caixa.checked = !caixa.checked;
+      falhar("erro-preparar", erro);
+    }
+  });
+
   $("trocar-livro").onclick = voltarParaLista;
   $("ouvir-pronto").onclick = abrirPlayer;
   $("gerar").onclick = gerar;
@@ -325,17 +357,21 @@ function desenharPreparar(livro) {
   $("p-autor").textContent = [livro.autor, livro.origem && `de ${livro.origem}`]
     .filter(Boolean).join(" · ");
   $("p-capitulos").textContent = livro.capitulos;
-  $("p-falas").textContent = livro.falas.toLocaleString("pt-BR");
+  const fora = (livro.falas_no_livro || livro.falas) - livro.falas;
+  $("p-falas").innerHTML = livro.falas.toLocaleString("pt-BR")
+    + (fora > 0 ? ` <span class="fora-conta">de ${livro.falas_no_livro}</span>` : "");
   $("p-duracao").textContent = hms(livro.previsao.duracao_audio);
   $("p-tempo").textContent = "~" + hms(livro.previsao.tempo_de_sintese);
   $("p-tamanho").textContent = Math.round(livro.previsao.tamanho_m4b / 1e6) + " MB";
 
   $("p-sumario").innerHTML = livro.estrutura
-    .map((c, i) => `<details>
+    .map((c, i) => `<details class="${c.ler ? "" : "fora"}" data-id="${c.id}">
         <summary>
+          <input type="checkbox" ${c.ler ? "checked" : ""} data-id="${c.id}"
+                 title="Desmarque para não ler este capítulo">
           <span class="n">${i + 1}</span>
           <span>${escapar(c.titulo)}</span>
-          <span class="dur">${c.falas} falas · ${hms(c.duracao)}</span>
+          <span class="dur">${c.ler ? `${c.falas} falas · ${hms(c.duracao)}` : "fora do áudio"}</span>
         </summary>
         <div class="amostra">${c.amostra.map((t) => `<p>${escapar(t)}</p>`).join("")}</div>
       </details>`)
@@ -419,6 +455,7 @@ async function abrirPlayer() {
   desenharTexto(app.texto);
   desenharSumario(app.texto);
   $("o-marcas").innerHTML = app.texto.capitulos
+    .filter((c) => c.inicio !== null)
     .map((c) => `<i style="left:${(c.inicio / app.texto.duracao) * 100}%"></i>`)
     .join("");
 
@@ -442,7 +479,8 @@ function desenharTexto(livro) {
     for (const bloco of cap.blocos) {
       if (bloco.tipo === "titulo") continue;  // já virou o cabeçalho acima
       const spans = bloco.falas
-        .map((f) => `<span class="fala" data-id="${f.id}">${escapar(f.texto)}</span>`)
+        .map((f) => `<span class="fala${f.ler ? "" : " fora"}" data-id="${f.id}"`
+                  + `${f.ler ? "" : ' title="fora do áudio"'}>${escapar(f.texto)}</span>`)
         .join(" ");
       pedacos.push(`<p class="bloco ${bloco.tipo}">${spans}</p>`);
     }
@@ -450,18 +488,24 @@ function desenharTexto(livro) {
   alvo.innerHTML = pedacos.join("");
 
   app.capitulos = livro.capitulos.map((c) => ({ titulo: c.titulo, inicio: c.inicio }));
-  app.falas = [];
+  // `todas` inclui as excluídas, porque o diálogo de edição precisa
+  // alcançá-las para poder trazê-las de volta. `falas` é só o que tem
+  // tempo na trilha, que é o índice da busca do destaque.
+  app.todas = [];
   for (const cap of livro.capitulos)
     for (const bloco of cap.blocos)
       for (const f of bloco.falas)
-        app.falas.push({ ...f, el: alvo.querySelector(`[data-id="${f.id}"]`) });
+        app.todas.push({ ...f, bloco: bloco.id, el: alvo.querySelector(`[data-id="${f.id}"]`) });
+  app.falas = app.todas.filter((f) => f.inicio !== null);
   app.falas.sort((a, b) => a.inicio - b.inicio);
   app.atual = -1;
 }
 
 function desenharSumario(livro) {
   $("o-sumario").innerHTML = livro.capitulos
-    .map((c, i) => `<li><a data-i="${i}"><span class="n">${i + 1}</span><span>${escapar(c.titulo)}</span></a></li>`)
+    .map((c, i) => `<li><a data-i="${i}" class="${c.inicio === null ? "sem-audio" : ""}"`
+        + `${c.inicio === null ? ' title="fora do áudio"' : ""}>`
+        + `<span class="n">${i + 1}</span><span>${escapar(c.titulo)}</span></a></li>`)
     .join("");
 }
 
@@ -469,17 +513,21 @@ function ligarOuvir() {
   $("o-sumario").onclick = (e) => {
     const a = e.target.closest("a");
     if (!a) return;
-    som.currentTime = app.capitulos[+a.dataset.i].inicio;
+    const inicio = app.capitulos[+a.dataset.i].inicio;
+    if (inicio === null) return;  // capítulo inteiro fora do áudio
+    som.currentTime = inicio;
     som.play();
   };
 
   $("texto").addEventListener("click", (e) => {
     const span = e.target.closest(".fala");
     if (!span) return;
-    const fala = app.falas.find((f) => f.id === span.dataset.id);
+    const fala = app.todas.find((f) => f.id === span.dataset.id);
     if (!fala) return;
-    // Clique pula para a frase; com Alt, abre a correção do texto falado.
-    if (e.altKey) return abrirEditor(fala);
+    // Clique pula para a frase; com Alt, abre a edição. Uma frase fora do
+    // áudio não tem para onde pular, então o clique simples abre a edição
+    // também — é a única coisa que ainda dá para fazer com ela.
+    if (e.altKey || fala.inicio === null) return abrirEditor(fala);
     som.currentTime = fala.inicio;
     som.play();
   });
@@ -554,8 +602,15 @@ function atualizar() {
     if (app.seguirTexto && !som.paused) rolarAte(app.falas[i].el);
   }
 
-  let c = 0;
-  while (c + 1 < app.capitulos.length && app.capitulos[c + 1].inicio <= t) c++;
+  // Capítulo sem áudio tem `inicio` nulo, e em JavaScript `null <= 0` é
+  // verdadeiro: numa comparação ingênua ele passaria por já ter começado,
+  // e o rodapé anunciaria o índice remissivo no segundo zero do livro.
+  let c = -1;
+  for (let k = 0; k < app.capitulos.length; k++) {
+    const ini = app.capitulos[k].inicio;
+    if (ini !== null && ini <= t) c = k;
+  }
+  if (c < 0) c = app.capitulos.findIndex((x) => x.inicio !== null);
   if (c !== app.capAtual) {
     app.capAtual = c;
     $("o-capitulo").textContent = app.capitulos[c]?.titulo || "";
@@ -586,6 +641,13 @@ let emEdicao = null;
 
 function ligarEditor() {
   $("editor-fechar").onclick = () => $("editor").close();
+
+  // Excluir e reincluir são o mesmo botão, com o rótulo trocado: são a
+  // mesma decisão vista dos dois lados, e separar em dois botões faria um
+  // deles estar sempre desabilitado.
+  $("editor-pular").onclick = () => alternarLeitura(emEdicao.id, !emEdicao.ler);
+  $("editor-pular-bloco").onclick = () => alternarLeitura(emEdicao.bloco, !emEdicao.ler, true);
+
   $("editor-salvar").onclick = async () => {
     const texto = $("editor-texto").value.trim();
     if (!texto || !emEdicao) return;
@@ -594,14 +656,7 @@ function ligarEditor() {
       emEdicao.falado = texto;
       emEdicao.el?.classList.add("corrigida");
       $("editor").close();
-      // A correção só vira som depois de refazer. Sem oferecer o botão
-      // aqui, o usuário corrige o texto, não ouve diferença nenhuma e
-      // conclui que a edição não funcionou.
-      app.corrigidas = (app.corrigidas || 0) + 1;
-      const botao = $("o-refazer");
-      botao.hidden = false;
-      botao.textContent = `Refazer o áudio (${app.corrigidas} ${
-        app.corrigidas === 1 ? "correção" : "correções"})`;
+      marcarPendencia();
     } catch (erro) {
       alert(erro.message);
     }
@@ -611,7 +666,40 @@ function ligarEditor() {
 function abrirEditor(fala) {
   emEdicao = fala;
   $("editor-texto").value = fala.falado;
+  $("editor-pular").textContent = fala.ler ? "Não ler esta frase" : "Voltar a ler";
+  $("editor-pular-bloco").textContent = fala.ler
+    ? "Não ler o parágrafo" : "Voltar a ler o parágrafo";
   $("editor").showModal();
+}
+
+/* Tira (ou devolve) um trecho do áudio. `bloco` decide se o alvo é a
+ * frase ou o parágrafo inteiro, que é o que se quer na maior parte das
+ * vezes: o que sobra de uma extração ruim vem em parágrafo, não em frase. */
+async function alternarLeitura(id, ler, bloco = false) {
+  try {
+    await pedir(bloco ? "/api/trecho" : "/api/fala", { id, ler });
+    const alvo = bloco ? app.todas.filter((f) => f.bloco === id)
+                       : app.todas.filter((f) => f.id === id);
+    for (const f of alvo) {
+      f.ler = ler;
+      f.el?.classList.toggle("fora", !ler);
+      if (f.el) f.el.title = ler ? "" : "fora do áudio";
+    }
+    $("editor").close();
+    marcarPendencia();
+  } catch (erro) {
+    alert(erro.message);
+  }
+}
+
+/* Mudança no texto só vira som depois de refazer. Sem oferecer o botão,
+ * o usuário edita, não ouve diferença nenhuma e conclui que não funcionou. */
+function marcarPendencia() {
+  app.pendentes = (app.pendentes || 0) + 1;
+  const botao = $("o-refazer");
+  botao.hidden = false;
+  botao.textContent = `Refazer o áudio (${app.pendentes} ${
+    app.pendentes === 1 ? "mudança" : "mudanças"})`;
 }
 
 /* ------------------------------------------------------------ marcador */

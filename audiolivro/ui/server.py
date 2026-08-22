@@ -30,6 +30,7 @@ from __future__ import annotations
 import mimetypes
 import shutil
 import subprocess
+import sys
 import threading
 from pathlib import Path
 
@@ -131,6 +132,11 @@ def criar_app(estado: Estado | None = None) -> FastAPI:
             ],
             "biblioteca": str(_projeto.BIBLIOTECA),
             "formatos": sorted(ingest.FORMATOS),
+            # Botões que só existem em alguns sistemas. Melhor a interface
+            # não os mostrar do que mostrá-los sem fazer nada ao clicar.
+            "seletor_nativo": bool(shutil.which("osascript")),
+            "revelar": sys.platform in ("darwin", "win32") or bool(shutil.which("xdg-open")),
+            "ocr": _ocr_disponivel(),
         })
 
     @app.post("/api/projetos/abrir")
@@ -289,34 +295,61 @@ def criar_app(estado: Estado | None = None) -> FastAPI:
 
     @app.post("/api/fala")
     def corrigir_fala(dados: dict = Body(...)) -> JSONResponse:
-        """Corrige o texto de uma fala.
+        """Reescreve o texto de uma fala, ou tira ela do áudio.
 
-        É a razão de o player mostrar o texto: ouvir um nome próprio
-        pronunciado errado e poder consertar ali mesmo. Como o cache é por
-        conteúdo, a próxima síntese refaz só esta fala.
+        É a razão de o player mostrar o texto. Ouvir um nome próprio
+        pronunciado errado e consertar ali mesmo; ou ouvir a ficha
+        catalográfica sendo lida e mandar pular. Como o cache é por
+        conteúdo, a próxima geração refaz só o que mudou.
         """
         projeto = estado.exigir()
         alvo = str(dados.get("id", ""))
-        texto = str(dados.get("texto", "")).strip()
-        if not texto:
-            raise HTTPException(400, "O texto não pode ficar vazio.")
 
+        for fala in projeto.livro.falas():
+            if fala.id != alvo:
+                continue
+            if "texto" in dados:
+                texto = str(dados["texto"]).strip()
+                if not texto:
+                    raise HTTPException(400, "O texto não pode ficar vazio.")
+                fala.texto = texto
+            if "ler" in dados:
+                fala.ler = bool(dados["ler"])
+            projeto.gravar_livro()
+            return JSONResponse({"id": alvo, "texto": fala.texto, "ler": fala.ler})
+        raise HTTPException(404, f"Fala {alvo} não existe.")
+
+    @app.post("/api/trecho")
+    def marcar_trecho(dados: dict = Body(...)) -> JSONResponse:
+        """Liga ou desliga a leitura de um bloco ou de um capítulo inteiro.
+
+        Existe porque o que se quer tirar quase nunca é uma frase: é a
+        página de créditos, o índice remissivo, a bibliografia. Marcar
+        frase por frase um índice de trinta páginas não é uma opção.
+        """
+        projeto = estado.exigir()
+        alvo = str(dados.get("id", ""))
+        ler = bool(dados.get("ler", True))
+
+        atingidas = 0
         for capitulo in projeto.livro.capitulos:
             for bloco in capitulo.blocos:
-                for fala in bloco.falas:
-                    if fala.id == alvo:
-                        fala.texto = texto
-                        projeto.gravar_livro()
-                        return JSONResponse({"id": alvo, "texto": texto})
-        raise HTTPException(404, f"Fala {alvo} não existe.")
+                if alvo in (capitulo.id, bloco.id):
+                    for fala in bloco.falas:
+                        fala.ler = ler
+                        atingidas += 1
+        if not atingidas:
+            raise HTTPException(404, f"Não achei o trecho {alvo}.")
+
+        projeto.gravar_livro()
+        return JSONResponse({"id": alvo, "ler": ler, "falas": atingidas})
 
     @app.post("/api/revelar")
     def revelar(dados: dict = Body(default={})) -> JSONResponse:
         nome = (dados or {}).get("nome")
         projeto = _carregar(nome) if nome else estado.exigir()
         alvo = projeto.audio() or projeto.pasta
-        subprocess.run(["open", "-R", str(alvo)], check=False)
-        return JSONResponse({"ok": True})
+        return JSONResponse({"ok": _revelar_no_sistema(alvo)})
 
     # -- ouvir -----------------------------------------------------------
 
@@ -360,18 +393,32 @@ def criar_app(estado: Estado | None = None) -> FastAPI:
                         "id": f.id,
                         "texto": f.exibicao,
                         "falado": f.texto,
-                        "inicio": por_fala[f.id].inicio,
-                        "fim": por_fala[f.id].inicio + por_fala[f.id].duracao,
+                        "ler": f.ler,
+                        "inicio": por_fala[f.id].inicio if f.id in por_fala else None,
+                        "fim": (por_fala[f.id].inicio + por_fala[f.id].duracao)
+                               if f.id in por_fala else None,
                     }
                     for f in bloco.falas
-                    if f.id in por_fala
+                    # A fala excluída continua aparecendo, riscada: sumir
+                    # com ela esconderia justamente o que se quer revisar.
+                    if f.id in por_fala or not f.ler
                 ]
                 if falas:
                     blocos.append({"id": bloco.id, "tipo": bloco.tipo, "falas": falas})
             if blocos:
+                # A primeira fala do capítulo pode estar excluída, e aí não
+                # tem tempo nenhum. O início do capítulo é o da primeira
+                # fala que sobrou; sem nenhuma, o capítulo é só texto na
+                # tela e o sumário não pula para ele.
+                inicios = [
+                    f["inicio"] for b in blocos for f in b["falas"]
+                    if f["inicio"] is not None
+                ]
                 capitulos.append({
-                    "id": capitulo.id, "titulo": capitulo.titulo,
-                    "inicio": blocos[0]["falas"][0]["inicio"], "blocos": blocos,
+                    "id": capitulo.id,
+                    "titulo": capitulo.titulo,
+                    "inicio": inicios[0] if inicios else None,
+                    "blocos": blocos,
                 })
 
         return JSONResponse({
@@ -386,6 +433,12 @@ def criar_app(estado: Estado | None = None) -> FastAPI:
 
 
 # -- apoio ---------------------------------------------------------------
+
+
+def _ocr_disponivel() -> bool:
+    from audiolivro.ingest.ocr import disponivel
+
+    return disponivel()
 
 
 def _carregar(nome: str) -> Projeto:
@@ -405,9 +458,11 @@ def _detalhe(projeto: Projeto) -> dict:
             {
                 "id": c.id,
                 "titulo": c.titulo,
-                "falas": len(c.falas()),
+                "falas": len(c.audiveis()),
+                "total": len(c.falas()),
+                "ler": bool(c.audiveis()),
                 "duracao": c.caracteres / 14.0,
-                "amostra": [f.texto for f in c.falas()[:3]],
+                "amostra": [f.texto for f in c.audiveis()[:3]] or [f.texto for f in c.falas()[:3]],
             }
             for c in projeto.livro.capitulos
         ],
@@ -472,6 +527,24 @@ def _novo_projeto(estado: Estado, caminho: Path, *, ocr: str, notas: bool) -> di
     novo = _projeto.criar(livro, origem=caminho)
     estado.adotar(novo)
     return {**_detalhe(novo), "reaproveitado": False}
+
+
+def _revelar_no_sistema(alvo: Path) -> bool:
+    """Abre o gerenciador de arquivos com o alvo selecionado."""
+    comandos = {
+        "darwin": ["open", "-R", str(alvo)],
+        "win32": ["explorer", f"/select,{alvo}"],
+    }
+    # No Linux não há como selecionar o arquivo de forma portátil, então
+    # abrimos a pasta, que resolve o mesmo problema com um clique a mais.
+    comando = comandos.get(sys.platform, ["xdg-open", str(alvo.parent)])
+    if not shutil.which(comando[0]):
+        return False
+    try:
+        subprocess.run(comando, check=False)
+    except OSError:
+        return False
+    return True
 
 
 def _escolher_arquivo() -> str | None:

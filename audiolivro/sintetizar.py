@@ -73,9 +73,12 @@ def sintetizar(
 ) -> Trilha:
     """Sintetiza `livro` em `destino` e devolve a `Trilha` com os tempos."""
     instancia, escolhida = abrir(motor, voz)
-    falas = livro.falas()
+    falas = livro.audiveis()
     if not falas:
-        raise ValueError("O livro não tem nenhuma fala para sintetizar.")
+        raise ValueError(
+            "Não há nada para sintetizar: o livro está vazio ou todas as "
+            "falas foram marcadas para não ler."
+        )
 
     destino = Path(destino)
     pasta = Path(cache) if cache else destino.parent / f".{destino.stem}.falas"
@@ -226,7 +229,7 @@ def _fase_montagem(
     # tudo já está em cache, modelo nenhum é carregado. O atributo estaria
     # no valor de fábrica, o ffmpeg receberia PCM de 22 kHz rotulado como
     # 24 kHz, e o livro inteiro sairia acelerado e com a voz mais aguda.
-    taxa = sf.info(caminhos[livro.falas()[0].id]).samplerate
+    taxa = sf.info(caminhos[livro.audiveis()[0].id]).samplerate
 
     with _montar.Escritor(
         bruto, taxa, formato=formato, bitrate=bitrate,
@@ -236,6 +239,8 @@ def _fase_montagem(
             inicio = escritor.posicao
             for bloco in capitulo.blocos:
                 for fala in bloco.falas:
+                    if not fala.ler:
+                        continue
                     if parar():
                         raise Cancelado("Montagem cancelada.")
                     amostras, _taxa = sf.read(caminhos[fala.id], dtype="float32")
@@ -245,9 +250,14 @@ def _fase_montagem(
                         Marca(fala.id, comeco, escritor.posicao - comeco)
                     )
                     escritor.silencio(fala.pausa * escala_de_pausa)
-            capitulos.append(
-                _montar.Capitulo(capitulo.titulo, inicio, escritor.posicao)
-            )
+            # Um capítulo cujas falas foram todas excluídas não ocupa
+            # tempo nenhum. Registrá-lo mesmo assim criaria no M4B um
+            # capítulo de duração zero, que os players mostram na lista e
+            # para o qual dá para pular, sem nada para ouvir.
+            if escritor.posicao > inicio:
+                capitulos.append(
+                    _montar.Capitulo(capitulo.titulo, inicio, escritor.posicao)
+                )
         duracao = escritor.posicao
 
     if precisa_de_capitulos:
@@ -278,9 +288,9 @@ def prever(livro: Livro, motor: str | None = None) -> dict:
     de rodar agora ou de madrugada.
     """
     segundos = livro.duracao_estimada()
-    rtf = {"kokoro": 0.24, "piper": 0.08, "macos": 0.02}.get(motor or "kokoro", 0.25)
+    rtf = {"kokoro": 0.24, "piper": 0.08, "macos": 0.02}.get(motor or "piper", 0.1)
     return {
-        "falas": len(livro.falas()),
+        "falas": len(livro.audiveis()),
         "caracteres": livro.caracteres,
         "duracao_audio": segundos,
         "tempo_de_sintese": segundos * rtf / _threads_padrao(),

@@ -168,15 +168,17 @@
 </section>
 
 <dialog id="editor">
-  <h3>Corrigir como esta frase é lida</h3>
+  <h3>Esta frase</h3>
   <p class="dica">
-    O texto abaixo é o que vai para a voz — já com números por extenso.
-    Escreva foneticamente se precisar. A correção vale na próxima geração,
-    e só esta frase será refeita.
+    O texto abaixo é o que vai para a voz, já com os números por extenso.
+    Reescreva à vontade, inclusive foneticamente. Vale na próxima geração,
+    e só o que mudou é refeito.
   </p>
   <textarea id="editor-texto"></textarea>
   <div class="acoes">
     <button id="editor-fechar">Cancelar</button>
+    <button id="editor-pular-bloco">Não ler o parágrafo</button>
+    <button id="editor-pular">Não ler esta frase</button>
     <button class="principal" id="editor-salvar">Salvar</button>
   </div>
 </dialog>

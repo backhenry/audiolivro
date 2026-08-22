@@ -57,6 +57,16 @@ class Fala:
     exibicao: str
     pausa: float = 0.35
     """Silêncio inserido depois desta fala, em segundos."""
+    ler: bool = True
+    """Se falso, a fala existe no livro mas não entra no áudio.
+
+    Excluir em vez de apagar é de propósito. Todo livro traz coisa que
+    não se ouve: página de créditos, ficha catalográfica, índice
+    remissivo, a legenda de uma figura que não existe em áudio. Apagar
+    resolveria o áudio e perderia o texto, e com ele a chance de voltar
+    atrás depois de ouvir. Assim o `livro.json` continua sendo o livro
+    inteiro, e o que muda é só o que se lê em voz alta.
+    """
 
     def __post_init__(self) -> None:
         if self.pausa < 0:
@@ -83,10 +93,13 @@ class Capitulo:
 
     @property
     def caracteres(self) -> int:
-        return sum(len(f.texto) for b in self.blocos for f in b.falas)
+        return sum(len(f.texto) for f in self.audiveis())
 
     def falas(self) -> list[Fala]:
         return [f for b in self.blocos for f in b.falas]
+
+    def audiveis(self) -> list[Fala]:
+        return [f for f in self.falas() if f.ler]
 
 
 @dataclass
@@ -104,13 +117,17 @@ class Livro:
     def falas(self) -> list[Fala]:
         return [f for c in self.capitulos for f in c.falas()]
 
+    def audiveis(self) -> list[Fala]:
+        """Só o que vai virar som. É esta a lista que a síntese percorre."""
+        return [f for f in self.falas() if f.ler]
+
     def duracao_estimada(self) -> float:
         """Segundos aproximados, para dar uma barra de progresso honesta.
 
         14 caracteres por segundo é a taxa medida do Kokoro em pt-BR na
         velocidade 1.0. Serve para estimar, não para sincronizar.
         """
-        pausas = sum(f.pausa for f in self.falas())
+        pausas = sum(f.pausa for f in self.audiveis())
         return self.caracteres / 14.0 + pausas
 
     # -- serialização ---------------------------------------------------
@@ -145,6 +162,7 @@ class Livro:
                                         else {}
                                     ),
                                     "pausa": round(f.pausa, 3),
+                                    **({} if f.ler else {"ler": False}),
                                 }
                                 for f in b.falas
                             ],
@@ -184,6 +202,7 @@ class Livro:
                                     texto=f["texto"],
                                     exibicao=f.get("exibicao", f["texto"]),
                                     pausa=float(f.get("pausa", 0.35)),
+                                    ler=bool(f.get("ler", True)),
                                 )
                                 for f in b.get("falas", [])
                             ],

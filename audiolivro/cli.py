@@ -12,6 +12,7 @@ extrator comeu os diálogos — e são dois erros caros de descobrir depois.
 
 from __future__ import annotations
 
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -192,8 +193,7 @@ def previa(
     trilha = _rodar_sintese(recorte, destino, motor, voz, velocidade, formato="m4a")
     console.print(f"[green]✓[/green] {destino} ({trilha.duracao:.0f}s)")
 
-    if sys.platform == "darwin":
-        subprocess.run(["afplay", str(destino)], check=False)
+    _tocar(destino)
 
 
 @app.command()
@@ -405,6 +405,27 @@ def _resumo(livro: Livro) -> None:
         f"{len(livro.capitulos)} capítulos · {len(livro.falas())} falas · "
         f"{livro.caracteres:,} caracteres".replace(",", ".")
     )
+
+
+def _tocar(arquivo: Path) -> None:
+    """Toca o arquivo no player padrão do sistema.
+
+    A prévia existe para ser ouvida na hora; obrigar o usuário a achar o
+    arquivo no disco anularia o propósito dela. Cada sistema tem seu
+    comando, e nenhum deles é essencial: falhar aqui não pode derrubar o
+    programa, então o caminho do arquivo é impresso de todo jeito.
+    """
+    comandos = {
+        "darwin": ["afplay", str(arquivo)],
+        "win32": ["cmd", "/c", "start", "", str(arquivo)],
+    }
+    comando = comandos.get(sys.platform, ["xdg-open", str(arquivo)])
+    if not shutil.which(comando[0]):
+        return
+    try:
+        subprocess.run(comando, check=False)
+    except OSError:
+        pass
 
 
 def _hms(segundos: float) -> str:

@@ -12,6 +12,40 @@ audiolivro ui
 Arraste o livro para a janela, confira o que o programa entendeu, escolha
 a voz, e ouça — com o texto acompanhando na tela.
 
+> ### 🤖 Não sabe por onde começar? Peça ao Claude
+>
+> Copie o bloco abaixo e cole no [Claude](https://claude.ai), no ChatGPT ou
+> em qualquer assistente. Ele conduz a instalação do começo ao fim, no seu
+> sistema, e resolve os erros que aparecerem pelo caminho.
+>
+> ```
+> Quero instalar e rodar o audiolivro, um programa de código aberto que
+> transforma livros (EPUB, PDF, PDF escaneado, TXT) em audiobooks com
+> capítulos, rodando localmente. O repositório é:
+> https://github.com/backhenry/audiolivro
+>
+> Me guie passo a passo, um passo de cada vez, esperando eu confirmar
+> antes de seguir para o próximo. Comece perguntando qual é o meu sistema
+> operacional (Windows, macOS ou Linux) e se eu já tenho Python e FFmpeg
+> instalados. Se eu não souber, me diga exatamente qual comando rodar para
+> descobrir.
+>
+> Preciso que você:
+> 1. me diga como instalar o Python 3.11 ou mais novo e o FFmpeg no meu
+>    sistema, com os comandos exatos para copiar e colar;
+> 2. me explique como baixar o repositório (com git ou baixando o ZIP);
+> 3. me guie na criação do ambiente virtual e na instalação;
+> 4. me faça baixar as vozes com "audiolivro baixar";
+> 5. abra a interface com "audiolivro ui" e me diga o que fazer nela.
+>
+> Use a voz Jeff, que é o padrão e a de melhor pronúncia brasileira.
+> Explique de forma simples, como se eu nunca tivesse usado um terminal.
+> Se algum comando der erro, me peça a mensagem completa e me ajude a
+> resolver antes de continuar.
+> ```
+
+---
+
 > ### 🇧🇷 Qual voz usar
 >
 > **Jeff** (`pt_BR-jeff-medium`), do motor Piper. É a voz com pronúncia
@@ -31,12 +65,13 @@ a voz, e ouça — com o texto acompanhando na tela.
 ## Índice
 
 - [Por que isto existe](#por-que-isto-existe)
-- [O que você precisa](#o-que-você-precisa)
+- [O que você precisa](#o-que-você-precisa) — **macOS, Windows e Linux**
 - [Instalação passo a passo](#instalação-passo-a-passo)
 - [Usando pela interface](#usando-pela-interface)
 - [Usando pela linha de comando](#usando-pela-linha-de-comando)
 - [As vozes](#as-vozes) — **qual usar em português**
 - [Corrigindo como uma palavra é lida](#corrigindo-como-uma-palavra-é-lida)
+- [Tirando trechos do áudio](#tirando-trechos-do-áudio)
 - [Onde ficam os arquivos](#onde-ficam-os-arquivos)
 - [O que o extrator conserta](#o-que-o-extrator-conserta)
 - [Perguntas comuns](#perguntas-comuns)
@@ -80,83 +115,224 @@ o que cuida de voz.
 
 | | |
 |---|---|
-| **Sistema** | macOS (testado no Apple Silicon). Linux e Windows funcionam, exceto o OCR de PDF escaneado e o botão "Finder" |
 | **Python** | 3.11 ou mais novo |
 | **FFmpeg** | para montar o arquivo final |
 | **Espaço** | ~200 MB para as vozes, mais o audiobook (~290 MB para 10 horas) |
 
-Não precisa de placa de vídeo. Num Mac com chip M, a síntese roda a cerca
-de 20× o tempo real: um livro de 10 horas leva perto de 30 minutos.
+Não precisa de placa de vídeo nem de internet depois da instalação. Num
+Mac com chip M, a síntese roda a cerca de 20× o tempo real: um livro de 10
+horas leva perto de 30 minutos.
+
+### O que funciona em cada sistema
+
+| | macOS | Windows | Linux |
+|---|:---:|:---:|:---:|
+| EPUB, PDF, TXT, Markdown | sim | sim | sim |
+| Vozes Piper e Kokoro | sim | sim | sim |
+| Interface e player | sim | sim | sim |
+| M4B com capítulos | sim | sim | sim |
+| **OCR de PDF escaneado** | sim | **não** | **não** |
+| Vozes do sistema (`--motor macos`) | sim | não | não |
+
+O desenvolvimento e os testes foram feitos em macOS com Apple Silicon.
+
+**Sobre o OCR:** ele usa o Vision, o motor de reconhecimento de texto do
+próprio macOS, que fala português e já vem instalado. Não há equivalente
+embutido no Windows nem no Linux, então PDF escaneado (aquele que é foto
+de página, sem texto selecionável) não é lido nesses sistemas. PDF normal,
+com texto de verdade, funciona em todos.
 
 ---
 
 ## Instalação passo a passo
 
-### 1. Instale o FFmpeg e o Python
+<details open>
+<summary><b>🍎 macOS</b></summary>
 
-No macOS, com [Homebrew](https://brew.sh):
+**1. Instale o FFmpeg e o Python** com o [Homebrew](https://brew.sh):
 
 ```bash
 brew install ffmpeg python@3.12
 ```
 
-No Ubuntu/Debian:
-
-```bash
-sudo apt install ffmpeg python3.12 python3.12-venv
-```
-
-### 2. Baixe o projeto
+**2. Baixe o projeto:**
 
 ```bash
 git clone https://github.com/backhenry/audiolivro.git
 cd audiolivro
 ```
 
-### 3. Crie um ambiente virtual e instale
-
-O ambiente virtual mantém as dependências deste projeto separadas do
-resto do seu sistema. É uma pasta `.venv` dentro do próprio projeto.
+**3. Crie o ambiente virtual e instale.** O ambiente virtual é uma pasta
+`.venv` dentro do projeto, que mantém as dependências dele separadas do
+resto do sistema:
 
 ```bash
 python3.12 -m venv .venv
 .venv/bin/pip install -e ".[tudo]"
 ```
 
-O `[tudo]` traz os dois motores de voz e o OCR. Se quiser só o essencial,
-use `".[piper]"` — é o motor padrão e o mais leve.
-
-### 4. Baixe as vozes
+**4. Baixe as vozes** (~190 MB, uma vez só):
 
 ```bash
 .venv/bin/audiolivro baixar
 ```
 
-São ~190 MB, baixados uma vez só e guardados em `~/.cache/audiolivro`.
-
-### 5. Confira que funcionou
+**5. Abra a interface:**
 
 ```bash
-.venv/bin/audiolivro vozes
+.venv/bin/audiolivro ui
+```
+
+**6. (Opcional) Crie um atalho** para não digitar o caminho inteiro:
+
+```bash
+echo "alias audiolivro=\"$PWD/.venv/bin/audiolivro\"" >> ~/.zshrc
+```
+
+Abra uma aba nova do terminal e passe a usar só `audiolivro`.
+
+</details>
+
+<details>
+<summary><b>🪟 Windows</b></summary>
+
+Use o **PowerShell** (procure por "PowerShell" no menu Iniciar). Todos os
+comandos abaixo são para colar lá.
+
+**1. Instale o Python e o FFmpeg.** O jeito mais simples é o `winget`, que
+já vem no Windows 10 e 11:
+
+```powershell
+winget install Python.Python.3.12
+winget install Gyan.FFmpeg
+```
+
+**Feche o PowerShell e abra de novo** depois disso. Sem isso, o Windows
+ainda não enxerga os programas recém-instalados.
+
+Confira que funcionou:
+
+```powershell
+python --version
+ffmpeg -version
+```
+
+> Se o `winget` não existir na sua máquina, baixe o Python em
+> [python.org/downloads](https://www.python.org/downloads/) — **marque a
+> caixa "Add Python to PATH"** na primeira tela do instalador — e o FFmpeg
+> em [gyan.dev/ffmpeg/builds](https://www.gyan.dev/ffmpeg/builds/).
+
+**2. Baixe o projeto.** Com git:
+
+```powershell
+git clone https://github.com/backhenry/audiolivro.git
+cd audiolivro
+```
+
+Sem git: clique em **Code › Download ZIP** [nesta página](https://github.com/backhenry/audiolivro),
+extraia a pasta, e navegue até ela com `cd caminho\da\pasta`.
+
+**3. Crie o ambiente virtual e instale:**
+
+```powershell
+python -m venv .venv
+.venv\Scripts\pip install -e ".[tudo]"
+```
+
+> A única diferença em relação ao macOS é `.venv\Scripts\` no lugar de
+> `.venv/bin/`. O `[tudo]` é o mesmo: as dependências de OCR estão marcadas
+> como exclusivas do macOS e o pip simplesmente as ignora aqui.
+
+**4. Baixe as vozes** (~190 MB, uma vez só):
+
+```powershell
+.venv\Scripts\audiolivro baixar
+```
+
+**5. Abra a interface:**
+
+```powershell
+.venv\Scripts\audiolivro ui
+```
+
+**6. (Opcional) Crie um atalho** para não digitar o caminho inteiro:
+
+```powershell
+notepad $PROFILE
+```
+
+Se o Bloco de Notas perguntar se quer criar o arquivo, diga que sim. Cole
+a linha abaixo, trocando o caminho pelo da sua pasta, e salve:
+
+```powershell
+function audiolivro { & "C:\caminho\para\audiolivro\.venv\Scripts\audiolivro.exe" @args }
+```
+
+Abra um PowerShell novo e passe a usar só `audiolivro`.
+
+> Se aparecer um erro sobre execução de scripts desabilitada, rode uma vez:
+> `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`
+
+</details>
+
+<details>
+<summary><b>🐧 Linux</b></summary>
+
+**1. Instale o FFmpeg e o Python** (Ubuntu/Debian):
+
+```bash
+sudo apt install ffmpeg python3.12 python3.12-venv git
+```
+
+**2. Baixe o projeto:**
+
+```bash
+git clone https://github.com/backhenry/audiolivro.git
+cd audiolivro
+```
+
+**3. Crie o ambiente virtual e instale:**
+
+```bash
+python3.12 -m venv .venv
+.venv/bin/pip install -e ".[tudo]"
+```
+
+As dependências de OCR são marcadas como exclusivas do macOS, então o pip
+as ignora aqui sem reclamar.
+
+**4. Baixe as vozes** (~190 MB, uma vez só):
+
+```bash
+.venv/bin/audiolivro baixar
+```
+
+**5. Abra a interface:**
+
+```bash
+.venv/bin/audiolivro ui
+```
+
+**6. (Opcional) Crie um atalho:**
+
+```bash
+echo "alias audiolivro=\"$PWD/.venv/bin/audiolivro\"" >> ~/.bashrc
+```
+
+</details>
+
+### Confira que funcionou
+
+```bash
+audiolivro vozes
 ```
 
 A primeira linha deve ser `piper · pt_BR-jeff-medium · Jeff` — a voz
 recomendada para português, já ativa como padrão — e o rodapé deve dizer
 `Motores prontos: piper, …`.
 
-Se aparecer só `macos`, as vozes não foram baixadas: volte ao passo 4.
-
-### 6. (Opcional) Crie um atalho
-
-Para não digitar o caminho inteiro toda vez:
-
-```bash
-echo "alias audiolivro=\"$PWD/.venv/bin/audiolivro\"" >> ~/.zshrc
-```
-
-Abra uma aba nova do terminal, e a partir daí basta `audiolivro`.
-
-> Se você usa bash em vez de zsh, troque `~/.zshrc` por `~/.bashrc`.
+Se aparecer só `macos`, ou nenhum motor, as vozes não foram baixadas:
+rode `audiolivro baixar`.
 
 ---
 
@@ -436,6 +612,37 @@ prática:
 
 ---
 
+## Tirando trechos do áudio
+
+Todo livro traz coisa que não se ouve: ficha catalográfica, página de
+créditos, índice remissivo, bibliografia, legenda de figura. Ler tudo isso
+em voz alta é o caminho mais rápido de abandonar um audiobook nos
+primeiros minutos.
+
+**Antes de gerar**, na tela de conferência, cada capítulo tem uma caixa de
+seleção. Desmarque a ficha catalográfica e o índice, e eles saem do áudio.
+O contador de falas passa a mostrar "4 de 14", e a estimativa de duração
+cai junto.
+
+**Depois de ouvir**, no player, clique numa frase segurando **Alt**. O
+diálogo que abre tem três saídas:
+
+| | |
+|---|---|
+| **Salvar** | reescreve o texto que vai para a voz |
+| **Não ler esta frase** | tira só ela |
+| **Não ler o parágrafo** | tira o bloco inteiro, que é o caso mais comum |
+
+O que fica de fora continua aparecendo na tela, riscado. Sumir com o
+trecho esconderia justamente o que você quer conferir antes de gerar de
+novo — e o botão **Voltar a ler** desfaz a qualquer momento.
+
+Nada é apagado: o `livro.json` continua sendo o livro inteiro, e o que
+muda é só o que se lê em voz alta. Depois de marcar, clique em **Refazer o
+áudio**; o cache reaproveita tudo que não mudou.
+
+---
+
 ## Onde ficam os arquivos
 
 Cada livro é uma pasta em `~/Audiolivros`:
@@ -483,7 +690,10 @@ os projetos.
 - **siglas**: `ONU` se lê como palavra, `IBGE` letra a letra, e um TÍTULO
   EM CAIXA ALTA não vira uma sequência de siglas;
 - **travessão, parêntese e reticências** viram ritmo, não palavras;
-- **frases longas** partidas em pontos onde um leitor humano respiraria.
+- **frases longas** partidas em pontos onde um leitor humano respiraria;
+- **títulos com letra espaçada**: "C A P Í T U L O  I I I", que o
+  diagramador usou para dar ar à página, vira "capítulo três" em vez de
+  ser soletrado letra por letra.
 
 ### Em PDF
 
