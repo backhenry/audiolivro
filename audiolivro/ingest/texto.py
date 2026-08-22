@@ -19,6 +19,7 @@ from pathlib import Path
 
 from audiolivro.texto import coerencia
 from audiolivro.texto.estrutura import _RE_CAPITULO, BlocoBruto, parece_titulo
+from audiolivro.texto.normalizar import juntar_letras_espacadas
 
 _RE_TITULO_MD = re.compile(r"^(#{1,6})\s+(.*)$")
 _RE_CITACAO_MD = re.compile(r"^>\s?(.*)$")
@@ -111,7 +112,9 @@ def _texto_puro(conteudo: str) -> list[BlocoBruto]:
         paragrafos = coerencia.juntar_linhas(linhas)
     else:
         paragrafos = [
-            " ".join(p.split())
+            # Mesma ordem do EPUB: juntar antes de colapsar, senão o
+            # espaço duplo que separa as palavras espaçadas desaparece.
+            " ".join(juntar_letras_espacadas(p).split())
             for p in re.split(r"\n\s*\n", conteudo)
             if p.strip()
         ]

@@ -11,6 +11,7 @@ import pytest
 
 from audiolivro.texto.normalizar import (
     converter_numeros,
+    juntar_letras_espacadas,
     expandir_abreviacoes,
     limpar,
     normalizar,
@@ -139,3 +140,55 @@ def test_pipeline_completo() -> None:
         "O senhor Silva pagou mil duzentos e cinquenta reais e cinquenta centavos "
         "ao i-bê-gê-é no capítulo catorze, sem reclamar."
     )
+
+
+# -- espaçamento de letra ------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "entrada, esperado",
+    [
+        ("C A P I T U L O", "CAPITULO"),
+        ("S U M Á R I O", "SUMÁRIO"),
+        ("e s p a ç a d o", "espaçado"),
+        ("P R E F Á C I O do livro", "PREFÁCIO do livro"),
+        # Dois espaços encerram a palavra: é a pista que a página dá.
+        ("C A P Í T U L O  I I I", "CAPÍTULO  III"),
+        ("C A P I T U L O\nI I I", "CAPITULO\nIII"),
+    ],
+)
+def test_letras_espacadas_viram_palavra(entrada: str, esperado: str) -> None:
+    """Diagramador espaça letra para dar ar ao título.
+
+    Na página o olho lê "CAPÍTULO" sem esforço; sem esta regra o motor
+    soletra "cê, á, pê, i…" na abertura de cada capítulo.
+    """
+    assert juntar_letras_espacadas(entrada) == esperado
+
+
+@pytest.mark.parametrize(
+    "texto",
+    [
+        "Ele viu a casa",          # letras isoladas de menos
+        "x = a + b",               # os sinais quebram a sequência
+        "A b C d E",               # caixa misturada não é palavra espaçada
+        "J. R. R. Tolkien",        # iniciais têm ponto
+        "lista: a) b) c)",         # enumeração
+    ],
+)
+def test_o_que_nao_e_espacamento_fica_intacto(texto: str) -> None:
+    assert juntar_letras_espacadas(texto) == texto
+
+
+def test_par_de_letras_so_junta_com_o_espacamento_provado() -> None:
+    """"DA" sozinho é ambíguo; no meio de um título espaçado, não é.
+
+    Exigir duas letras por padrão dispararia em qualquer enumeração. Mas
+    quando o mesmo trecho já teve uma junção, o espaçamento está provado.
+    """
+    assert juntar_letras_espacadas("D A") == "D A"
+    assert juntar_letras_espacadas("N O M E\nD A\nR O S A") == "NOME\nDA\nROSA"
+
+
+def test_titulo_espacado_chega_falavel_no_motor() -> None:
+    assert normalizar("C A P Í T U L O  I I I") == "CAPÍTULO três."

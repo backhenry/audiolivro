@@ -53,11 +53,66 @@ _TRADUCAO_TABELA = str.maketrans(_TRADUCOES)
 _SOBRESCRITOS = "¹²³⁰⁴⁵⁶⁷⁸⁹⁺⁻"
 
 
+# Letra solta, em qualquer alfabeto, sem dígito nem sublinhado.
+_LETRA = r"[^\W\d_]"
+def _regra(minimo: int) -> re.Pattern[str]:
+    """Sequência de `minimo` letras isoladas separadas por um espaço."""
+    return re.compile(rf"(?<!{_LETRA})((?:{_LETRA} ){{{minimo - 1},}}{_LETRA})(?!{_LETRA})")
+
+
+_RE_LETRAS_ESPACADAS = _regra(3)
+_RE_LETRAS_ESPACADAS_PAR = _regra(2)
+
+
+def juntar_letras_espacadas(texto: str) -> str:
+    """Reverte o espaçamento de letra da diagramação: "C A P Í T U L O".
+
+    Diagramador espaça letra para dar ar a um título. Na página o olho lê
+    "CAPÍTULO" sem esforço; na extração viram oito letras soltas, e o
+    motor as soletra uma a uma — "cê, á, pê, i…" — no lugar de ler a
+    palavra. É o defeito mais audível que um título pode ter, porque
+    acontece logo na abertura de cada capítulo.
+
+    O que separa uma palavra da seguinte é o tamanho do espaço, e essa
+    pista sobrevive à extração de formas diferentes: às vezes como espaço
+    duplo, às vezes como quebra de linha. Por isso a regra só aceita **um**
+    espaço entre as letras de uma mesma palavra — qualquer coisa maior
+    encerra a sequência. É o que faz "C A P Í T U L O  I I I" virar
+    "CAPÍTULO III" em vez de "CAPÍTULOIII".
+
+    Exige três letras seguidas e case uniforme. Duas bastariam para
+    disparar em "a b" de uma enumeração; e a mistura de caixa denuncia
+    que aquilo não é uma palavra espaçada, e sim letras que se
+    encontraram por acaso.
+    """
+
+    def _juntar(m: re.Match[str]) -> str:
+        letras = m.group(1).split()
+        if not (all(c.isupper() for c in letras) or all(c.islower() for c in letras)):
+            return m.group(0)
+        return "".join(letras)
+
+    juntado = _RE_LETRAS_ESPACADAS.sub(_juntar, texto)
+
+    # Segunda passada, só se a primeira encontrou algo. Uma palavra de
+    # duas letras no meio de um título espaçado — o "DA" de "O NOME DA
+    # ROSA" — não tem letras suficientes para provar sozinha que está
+    # espaçada, e exigir duas por padrão dispararia em toda enumeração
+    # "a) b)". Mas se o mesmo trecho já teve uma junção, o espaçamento
+    # está provado, e aí o par deixa de ser ambíguo.
+    if juntado != texto:
+        juntado = _RE_LETRAS_ESPACADAS_PAR.sub(_juntar, juntado)
+    return juntado
+
+
 def limpar(texto: str) -> str:
     """Normaliza caracteres antes de qualquer análise. Não muda palavras."""
     texto = unicodedata.normalize("NFC", texto)
     texto = texto.translate(_INVISIVEIS).translate(_TRADUCAO_TABELA)
     texto = re.sub(f"[{_SOBRESCRITOS}]+", "", texto)
+    # Antes de colapsar os brancos: depois disso, tabulação e espaço duplo
+    # somem, e com eles a última pista de onde uma palavra terminava.
+    texto = juntar_letras_espacadas(texto)
     # Qualquer branco vira um espaço só, quebra de linha inclusive: um
     # bloco é um parágrafo por definição, e a quebra que sobrou do HTML
     # ou do PDF é da diagramação, não do texto.

@@ -31,6 +31,7 @@ from statistics import median
 from audiolivro.ingest.ocr import OCRIndisponivel, disponivel as ocr_disponivel, reconhecer
 from audiolivro.texto import coerencia
 from audiolivro.texto.estrutura import BlocoBruto, parece_titulo
+from audiolivro.texto.normalizar import juntar_letras_espacadas
 
 # Abaixo disso a página é imagem: o extrator devolveu quase nada porque
 # não há texto embutido, só o retrato de uma página impressa.
@@ -310,6 +311,10 @@ def _paragrafos(
     blocos: list[BlocoBruto] = []
     for grupo in grupos:
         texto = coerencia.desifenizar("\n".join(l.texto for l in grupo), vocab)
+        # Antes de colapsar os brancos: num título espaçado, o limite
+        # entre palavras chega como quebra de linha ("C A P Í T U L O" numa
+        # linha, "I I I" na outra), e colapsar primeiro apagaria a pista.
+        texto = juntar_letras_espacadas(texto)
         texto = " ".join(texto.split())
         if not texto:
             continue

@@ -21,6 +21,7 @@ import re
 from pathlib import Path
 
 from audiolivro.texto.estrutura import BlocoBruto
+from audiolivro.texto.normalizar import juntar_letras_espacadas
 
 # Tags cujo conteúdo inteiro é descartado antes de qualquer leitura.
 # `figure` não está aqui de propósito: a imagem some, mas a legenda dela
@@ -104,7 +105,10 @@ def _extrair(sopa, *, ler_notas: bool) -> list[BlocoBruto]:
         if tag.find(list(MAPA)):
             continue
 
-        texto = " ".join(tag.get_text(" ", strip=True).split())
+        # A junção de letras espaçadas precisa vir antes do colapso dos
+        # brancos: é o espaço duplo que diz onde a palavra terminou, em
+        # "C A P Í T U L O  I". Depois de colapsar, some a pista.
+        texto = " ".join(juntar_letras_espacadas(tag.get_text(" ", strip=True)).split())
         if not texto:
             continue
 
