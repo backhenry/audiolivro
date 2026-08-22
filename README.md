@@ -12,6 +12,20 @@ audiolivro ui
 Arraste o livro para a janela, confira o que o programa entendeu, escolha
 a voz, e ouça — com o texto acompanhando na tela.
 
+> ### 🇧🇷 Qual voz usar
+>
+> **Jeff** (`pt_BR-jeff-medium`), do motor Piper. É a voz com pronúncia
+> brasileira mais natural entre as disponíveis, e **já é o padrão** — se
+> você não mexer em nada, é ela que sai.
+>
+> ```bash
+> audiolivro gerar livro.epub                          # já usa a Jeff
+> audiolivro gerar livro.epub --voz pt_BR-jeff-medium  # explícito
+> ```
+>
+> Evite as vozes do Kokoro para português: a prosódia é melhor, mas o
+> sotaque puxa para o inglês. Veja [As vozes](#as-vozes) para o porquê.
+
 ---
 
 ## Índice
@@ -21,7 +35,7 @@ a voz, e ouça — com o texto acompanhando na tela.
 - [Instalação passo a passo](#instalação-passo-a-passo)
 - [Usando pela interface](#usando-pela-interface)
 - [Usando pela linha de comando](#usando-pela-linha-de-comando)
-- [As vozes](#as-vozes)
+- [As vozes](#as-vozes) — **qual usar em português**
 - [Corrigindo como uma palavra é lida](#corrigindo-como-uma-palavra-é-lida)
 - [Onde ficam os arquivos](#onde-ficam-os-arquivos)
 - [O que o extrator conserta](#o-que-o-extrator-conserta)
@@ -126,7 +140,11 @@ São ~190 MB, baixados uma vez só e guardados em `~/.cache/audiolivro`.
 .venv/bin/audiolivro vozes
 ```
 
-Deve listar as vozes disponíveis e dizer quais motores estão prontos.
+A primeira linha deve ser `piper · pt_BR-jeff-medium · Jeff` — a voz
+recomendada para português, já ativa como padrão — e o rodapé deve dizer
+`Motores prontos: piper, …`.
+
+Se aparecer só `macos`, as vozes não foram baixadas: volte ao passo 4.
 
 ### 6. (Opcional) Crie um atalho
 
@@ -289,13 +307,67 @@ audiolivro gerar livro.epub \
 
 ## As vozes
 
+### A recomendação, direto
+
+**Use a Jeff.** É a voz com a pronúncia brasileira mais natural entre as
+disponíveis, e é o padrão do programa.
+
+| onde | o que fazer |
+|---|---|
+| **Interface** | nada. "Jeff" já vem selecionado no campo *Voz* |
+| **Linha de comando** | nada. `audiolivro gerar livro.epub` já usa a Jeff |
+| **Para ser explícito** | `--motor piper --voz pt_BR-jeff-medium` |
+| **Primeira vez** | `audiolivro baixar` traz as vozes Piper (~190 MB) |
+
+Confira que está ativa:
+
+```bash
+audiolivro vozes
+```
+
+A primeira linha da tabela deve ser `piper · pt_BR-jeff-medium · Jeff`, e
+no rodapé deve aparecer `Motores prontos: piper, …`. Se aparecer só
+`macos`, as vozes ainda não foram baixadas — rode `audiolivro baixar`.
+
+Antes de comprometer horas de síntese, ouça alguns segundos dela no seu
+próprio livro:
+
+```bash
+audiolivro previa livro.epub
+```
+
+### Todas as opções
+
 | motor | vozes pt-BR | prosódia | sotaque | velocidade |
 |---|---|---|---|---|
-| **`piper`** (padrão) | Jeff, Faber, Cadu | mais plana | brasileiro | ~20× tempo real |
+| **`piper`** (padrão) | **Jeff**, Faber, Cadu | mais plana | brasileiro | ~20× tempo real |
 | `kokoro` | Dora, Alex, Santa | a melhor | puxa para o inglês | ~9× |
 | `macos` | Luciana e as do sistema | robótica | brasileiro | ~40× |
 
-**Por que o Piper é o padrão, sendo o modelo menor.** O Kokoro tem a
+### Por que a Jeff, entre as três do Piper
+
+As três têm pronúncia brasileira legítima — a diferença é de timbre e de
+ritmo, e timbre é gosto. A Jeff ficou na frente em escuta cega de prosa
+narrativa, e um número concorda com o ouvido: **no mesmo texto, a Jeff
+leva 42,9 s e a Faber 36,9 s**. A Faber fala uns 15% mais rápido. Em
+quinze segundos isso não importa; em dez horas, é o que separa um
+narrador calmo de um apressado.
+
+Se a Jeff soar arrastada demais para você, há duas saídas — nesta ordem:
+
+```bash
+audiolivro gerar livro.epub --velocidade 1.05          # acelera a Jeff
+audiolivro gerar livro.epub --voz pt_BR-faber-medium   # troca pela Faber
+```
+
+Prefira a primeira. A `--velocidade` age na síntese, não na reprodução,
+então o resultado soa melhor que acelerar o player depois.
+
+A terceira, `pt_BR-cadu-medium`, existe para completar a lista.
+
+### Por que o Piper é o padrão, sendo o modelo menor
+
+O Kokoro tem a
 melhor prosódia dos três — variação de entonação dentro da frase, ênfase,
 respiração. Mas o modelo é treinado quase todo em inglês, e as três vozes
 portuguesas entraram com pouco dado: ele acerta os fonemas do português e
