@@ -134,6 +134,13 @@ def _chave(texto: str, motor: str, voz: str, velocidade: float) -> str:
     aplicado. É o que faz mudar uma entrada do dicionário re-sintetizar
     exatamente as falas que a contêm, e nenhuma outra.
     """
+    # Um `Fala` interpolado aqui viraria o `repr` dele, que inclui o id —
+    # e a chave passaria a variar com a posição da fala no livro,
+    # desfazendo em silêncio a deduplicação e o reaproveitamento do cache.
+    # Errado e mudo é a pior combinação, então falha alto.
+    if not isinstance(texto, str):
+        raise TypeError(f"_chave espera o texto da fala, recebeu {type(texto).__name__}")
+
     assinatura = f"{motor}|{voz}|{velocidade:.3f}|{texto}"
     return hashlib.sha256(assinatura.encode("utf-8")).hexdigest()[:24]
 

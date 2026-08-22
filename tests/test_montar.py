@@ -67,16 +67,16 @@ def _fala(texto: str, id_: str = "c001-b0001-f0") -> Fala:
 
 def test_frases_iguais_compartilham_o_audio() -> None:
     # "Ele não respondeu." aparece dezenas de vezes num romance.
-    a = _chave(_fala("Ele não respondeu.", "c001-b0002-f0"), "kokoro", "pf_dora", 1.0)
-    b = _chave(_fala("Ele não respondeu.", "c009-b0100-f3"), "kokoro", "pf_dora", 1.0)
+    a = _chave(_fala("Ele não respondeu.", "c001-b0002-f0").texto, "kokoro", "pf_dora", 1.0)
+    b = _chave(_fala("Ele não respondeu.", "c009-b0100-f3").texto, "kokoro", "pf_dora", 1.0)
     assert a == b
 
 
 def test_inserir_paragrafo_no_comeco_nao_invalida_o_resto() -> None:
     # O id não entra na chave justamente por isso: renumerar tudo depois
     # de uma inserção jogaria fora horas de síntese.
-    antes = _chave(_fala("Mesma frase.", "c001-b0001-f0"), "kokoro", "pf_dora", 1.0)
-    depois = _chave(_fala("Mesma frase.", "c001-b0002-f0"), "kokoro", "pf_dora", 1.0)
+    antes = _chave(_fala("Mesma frase.", "c001-b0001-f0").texto, "kokoro", "pf_dora", 1.0)
+    depois = _chave(_fala("Mesma frase.", "c001-b0002-f0").texto, "kokoro", "pf_dora", 1.0)
     assert antes == depois
 
 
@@ -85,8 +85,8 @@ def test_inserir_paragrafo_no_comeco_nao_invalida_o_resto() -> None:
     [("piper", "pf_dora", 1.0), ("kokoro", "pm_alex", 1.0), ("kokoro", "pf_dora", 1.2)],
 )
 def test_trocar_motor_voz_ou_velocidade_muda_a_chave(motor, voz, velocidade) -> None:
-    base = _chave(_fala("Uma frase."), "kokoro", "pf_dora", 1.0)
-    assert _chave(_fala("Uma frase."), motor, voz, velocidade) != base
+    base = _chave("Uma frase.", "kokoro", "pf_dora", 1.0)
+    assert _chave("Uma frase.", motor, voz, velocidade) != base
 
 
 # -- tratamento das amostras ---------------------------------------------
@@ -117,3 +117,13 @@ def test_volume_e_igualado_entre_falas() -> None:
     baixa = normalizar_volume(np.full(100, 0.1, dtype=np.float32))
     alta = normalizar_volume(np.full(100, 0.9, dtype=np.float32))
     assert float(np.max(baixa)) == pytest.approx(float(np.max(alta)), abs=1e-6)
+
+
+def test_passar_a_fala_em_vez_do_texto_falha_alto() -> None:
+    """Interpolar um `Fala` daria o `repr` dele, que inclui o id.
+
+    A chave passaria a variar com a posição da fala no livro, desfazendo
+    a deduplicação sem erro nenhum — o pior tipo de defeito de cache.
+    """
+    with pytest.raises(TypeError, match="espera o texto"):
+        _chave(_fala("Uma frase."), "piper", "jeff", 1.0)
