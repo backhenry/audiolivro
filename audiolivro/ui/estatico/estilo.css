@@ -224,6 +224,9 @@ button.perigo:hover { background: var(--erro); border-color: var(--erro); color:
 .fala-revisao .acoes-fala button:hover { opacity: 1; color: var(--marca); background: none; }
 .fala-revisao .acoes-fala button.tocando { opacity: 1; color: var(--marca); }
 .fala-revisao .acoes-fala button:disabled { opacity: .25; cursor: default; }
+/* O texto num span próprio: é ele que a correção troca, para que os
+   botões da linha sobrevivam à edição. */
+.fala-revisao .texto-fala { cursor: pointer; }
 
 .escolhas {
   display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));

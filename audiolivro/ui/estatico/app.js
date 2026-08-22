@@ -440,7 +440,7 @@ function desenharFalasDoCapitulo(caixa, falas) {
          <span class="acoes-fala">
            <button data-acao="tocar" title="Ouvir só esta frase">▶</button>
            <button data-acao="editar" title="Reescrever ou tirar do áudio">✎</button>
-         </span>${escapar(f.texto)}</p>`).join("")
+         </span><span class="texto-fala">${escapar(f.texto)}</span></p>`).join("")
     : '<p class="carregando">nada para ler neste capítulo</p>';
 }
 
@@ -876,7 +876,13 @@ function ligarEditor() {
         // Na conferência o que se vê é o texto falado, então ele precisa
         // refletir a correção na hora; no player o que se vê é o texto
         // original do livro, que não muda.
-        if (el.classList.contains("fala-revisao")) el.textContent = texto;
+        //
+        // Só o span do texto é trocado. Escrever no `textContent` da
+        // linha inteira apagaria os botões de ouvir e editar, que são
+        // filhos dela — e a frase recém-corrigida ficava sem como ser
+        // ouvida nem corrigida de novo, justamente quando se quer as duas.
+        const alvo = el.querySelector(".texto-fala");
+        if (alvo) alvo.textContent = texto;
       }
       $("editor").close();
       marcarPendencia();
