@@ -108,10 +108,22 @@ def vozes() -> None:
         tabela.add_row(voz.motor, voz.id, voz.nome, voz.genero or "—")
     console.print(tabela)
     console.print(f"\nMotores prontos: [bold]{', '.join(prontos)}[/bold]")
-    if "kokoro" not in prontos:
+
+    # As dicas seguem a ordem de preferência: sem o Piper, o usuário está
+    # preso nas vozes do sistema e nem sabe disso — a lista acima parece
+    # completa. Mencionar o Kokoro antes disso seria apontar para a
+    # segunda escolha.
+    if "piper" not in prontos:
         console.print(
-            "[yellow]O Kokoro (melhor qualidade) precisa dos pesos.[/yellow] "
-            "Rode: [bold]audiolivro baixar[/bold]"
+            "\n[yellow]As vozes com pronúncia brasileira ainda não foram "
+            "baixadas.[/yellow]\nRode: [bold]audiolivro baixar[/bold]  "
+            "[dim](~190 MB, uma vez só)[/dim]"
+        )
+    elif "kokoro" not in prontos:
+        console.print(
+            "\n[dim]O Kokoro tem prosódia melhor, com sotaque levemente "
+            "americano. Para experimentar:\n"
+            "  audiolivro baixar kokoro   (350 MB)[/dim]"
         )
 
 
