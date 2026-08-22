@@ -196,13 +196,25 @@ button.perigo:hover { background: var(--erro); border-color: var(--erro); color:
 .sumario .carregando { font-family: var(--sistema); font-size: .82rem; opacity: .7; }
 
 /* Cada fala da conferência é clicável: é aqui que se corrige o texto
-   antes de gastar horas sintetizando, e não só depois de ouvir. */
+   antes de gastar horas sintetizando, e não só depois de ouvir.
+   O lápis fica sempre visível, e não só ao passar o mouse: quem não sabe
+   que dá para editar nunca vai passar o mouse para descobrir. */
 .fala-revisao {
-  cursor: pointer; border-radius: 4px; padding: .12rem .3rem; margin-left: -.3rem;
+  position: relative; cursor: pointer; border-radius: 4px;
+  padding: .16rem .3rem .16rem 1.7rem; margin-left: -.3rem;
   transition: background .15s ease;
 }
+.fala-revisao::before {
+  content: "✎";
+  position: absolute; left: .35rem; top: .16rem;
+  opacity: .3; font-size: .95em; text-decoration: none;
+  transition: opacity .15s ease, color .15s ease;
+}
 .fala-revisao:hover { background: var(--realce); color: var(--tinta); }
-.fala-revisao.fora { opacity: .38; text-decoration: line-through; }
+.fala-revisao:hover::before { opacity: 1; color: var(--marca); }
+.fala-revisao.fora { opacity: .4; text-decoration: line-through; }
+/* O risco não pode alcançar o lápis: ele continua clicável. */
+.fala-revisao.fora::before { text-decoration: none; }
 .fala-revisao.corrigida { border-bottom: 1px dashed var(--marca); }
 
 .escolhas {
