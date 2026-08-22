@@ -72,6 +72,7 @@ a voz, e ouça — com o texto acompanhando na tela.
 - [As vozes](#as-vozes) — **qual usar em português**
 - [Corrigindo como uma palavra é lida](#corrigindo-como-uma-palavra-é-lida)
 - [Tirando trechos do áudio](#tirando-trechos-do-áudio)
+- [Baixando para distribuir](#baixando-para-distribuir)
 - [Onde ficam os arquivos](#onde-ficam-os-arquivos)
 - [O que o extrator conserta](#o-que-o-extrator-conserta)
 - [Perguntas comuns](#perguntas-comuns)
@@ -463,6 +464,8 @@ audiolivro gerar livro.livro.json
 | `capitulos ARQUIVO` | mostra a estrutura encontrada |
 | `gerar ARQUIVO` | sintetiza o livro inteiro |
 | `player ARQUIVO.m4b` | abre a interface num audiobook pronto |
+| `projetos` | lista os audiobooks da sua biblioteca |
+| `exportar ALVO` | converte para outro formato, para distribuir |
 | `vozes` | lista as vozes disponíveis |
 | `baixar [motor]` | baixa os pesos das vozes |
 
@@ -643,6 +646,44 @@ muda é só o que se lê em voz alta. Depois de marcar, clique em **Refazer o
 
 ---
 
+## Baixando para distribuir
+
+O audiobook fica em `~/Audiolivros`, mas você raramente quer o caminho: quer
+o arquivo, com nome de verdade, para mandar para alguém.
+
+No player, clique em **↓ Baixar**. Você escolhe:
+
+| formato | quando usar |
+|---|---|
+| **MP3** | toca em qualquer lugar. É o que mandar para alguém |
+| **M4B** | capítulos de verdade, navegáveis. Apple Books, Podcasts |
+| **M4A** | igual ao M4B, sem os capítulos |
+| **WAV** | sem perda e enorme. Só para reeditar em outro programa |
+
+E se quer **um arquivo só** ou **um por capítulo**, que sai num `.zip`.
+
+Todos saem com título, autor, álbum e número de faixa preenchidos. Sem
+isso, um MP3 solto entra na biblioteca de quem recebeu como "audio", sem
+autor e fora de ordem — e um audiobook de trinta capítulos embaralhado é
+inutilizável.
+
+Trocar de formato **não re-sintetiza nada**: parte do áudio pronto e é uma
+passada de ffmpeg. Mesmo em dez horas, leva segundos.
+
+Pela linha de comando:
+
+```bash
+audiolivro projetos                              # lista o que você tem
+audiolivro exportar "O Nome da Rosa" -f mp3      # um MP3 do livro inteiro
+audiolivro exportar "O Nome da Rosa" -f mp3 --por-capitulo
+audiolivro exportar ~/livro.m4b -f mp3 -o ~/Desktop
+```
+
+Aceita tanto o nome do projeto quanto o caminho de um `.m4b` que o
+`audiolivro gerar` deixou em outra pasta.
+
+---
+
 ## Onde ficam os arquivos
 
 Cada livro é uma pasta em `~/Audiolivros`:
@@ -655,6 +696,7 @@ Cada livro é uma pasta em `~/Audiolivros`:
     audio.m4b         o audiobook
     posicao.json      onde a escuta parou
     original.epub     o arquivo de onde tudo veio
+    exportado/        o que você baixou para distribuir
     .falas/           cache de síntese
 ```
 

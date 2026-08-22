@@ -344,6 +344,55 @@ def criar_app(estado: Estado | None = None) -> FastAPI:
         projeto.gravar_livro()
         return JSONResponse({"id": alvo, "ler": ler, "falas": atingidas})
 
+    @app.post("/api/exportar")
+    def exportar(dados: dict = Body(...)) -> JSONResponse:
+        """Prepara o arquivo para download e devolve o nome dele.
+
+        Vai para uma tarefa porque recodificar dez horas de áudio leva
+        dezenas de segundos, e a interface precisa continuar respondendo —
+        e mostrando progresso — enquanto isso.
+        """
+        if estado.sintetizando:
+            raise HTTPException(409, "Espere a síntese em andamento terminar.")
+        projeto = estado.com_audio()
+        formato = dados.get("formato", "mp3")
+        if formato not in ("mp3", "m4b", "m4a", "wav"):
+            raise HTTPException(400, f"Formato '{formato}' não é aceito.")
+        por_capitulo = bool(dados.get("por_capitulo", False))
+
+        def trabalho(controle: Controle) -> dict:
+            controle.progresso(
+                0.1,
+                "separando os capítulos…" if por_capitulo else f"convertendo para {formato}…",
+            )
+            arquivo = projeto.exportar(formato, por_capitulo=por_capitulo)
+            controle.progresso(1.0, "pronto")
+            return {"arquivo": arquivo.name, "bytes": arquivo.stat().st_size}
+
+        tarefa = estado.executor.enviar("exportar", trabalho)
+        estado.tarefa = tarefa
+        estado.projeto_do_job = projeto.nome
+        return JSONResponse(tarefa.instantaneo())
+
+    @app.get("/api/baixar")
+    def baixar(arquivo: str) -> FileResponse:
+        """Entrega o arquivo exportado, com nome de verdade.
+
+        O `filename` é o que faz o navegador salvar como "O Nome da
+        Rosa.mp3" em vez de "baixar". Sem ele, quem recebe o arquivo não
+        sabe o que é.
+        """
+        projeto = estado.exigir()
+        # O nome vem da resposta da exportação, mas chega pela URL: só
+        # aceitamos um arquivo que esteja de fato na pasta de exportação.
+        caminho = (projeto.pasta / _projeto.PASTA_EXPORT / Path(arquivo).name).resolve()
+        esperada = (projeto.pasta / _projeto.PASTA_EXPORT).resolve()
+        if caminho.parent != esperada or not caminho.is_file():
+            raise HTTPException(404, "Arquivo exportado não encontrado.")
+        return FileResponse(
+            caminho, filename=caminho.name, media_type="application/octet-stream"
+        )
+
     @app.post("/api/revelar")
     def revelar(dados: dict = Body(default={})) -> JSONResponse:
         nome = (dados or {}).get("nome")

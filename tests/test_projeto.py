@@ -11,7 +11,7 @@ import pytest
 
 from audiolivro import projeto as _projeto
 from audiolivro.modelo import Livro, Marca, Trilha
-from audiolivro.projeto import Projeto, ProjetoInvalido
+from audiolivro.projeto import Projeto, ProjetoInvalido, exportar_audio
 from audiolivro.texto.estrutura import BlocoBruto, montar
 
 
@@ -210,3 +210,80 @@ def test_posicao_nao_passa_do_fim() -> None:
     p.gravar_trilha(_trilha())  # 42 segundos
     assert p.guardar_posicao(9999.0, 1.5)["segundo"] == 42.0
     assert p.guardar_posicao(-5.0, 1.0)["segundo"] == 0.0
+
+
+# -- exportar ------------------------------------------------------------
+
+
+def _com_audio(segundos: float = 6.0) -> Projeto:
+    """Projeto com um áudio de verdade, para o ffmpeg ter o que converter."""
+    import numpy as np
+    import soundfile as sf
+
+    p = _projeto.criar(_livro())
+    taxa = 22_050
+    t = np.linspace(0, segundos, int(taxa * segundos), endpoint=False)
+    onda = (0.2 * np.sin(2 * np.pi * 220 * t)).astype("float32")
+    sf.write(p.pasta / "audio.wav", onda, taxa)
+    p.gravar_trilha(
+        Trilha(audio="audio.wav", duracao=segundos, motor="piper", voz="jeff",
+               capitulos=[("Capítulo I", 0.0), ("Capítulo II", segundos / 2)])
+    )
+    return p
+
+
+def test_capitulos_ganham_fim_a_partir_do_proximo() -> None:
+    p = _com_audio(10.0)
+    assert p.capitulos_com_tempo() == [
+        ("Capítulo I", 0.0, 5.0),
+        ("Capítulo II", 5.0, 10.0),
+    ]
+
+
+def test_exportar_converte_de_formato() -> None:
+    p = _com_audio()
+    saida = p.exportar("mp3")
+    assert saida.suffix == ".mp3"
+    assert saida.stat().st_size > 0
+    # Nome de verdade, não "audio.mp3": é o que chega em quem receber.
+    assert saida.stem == "O Relojoeiro"
+
+
+def test_exportar_mesmo_formato_nao_recodifica() -> None:
+    p = _com_audio()
+    original = (p.pasta / "audio.wav").read_bytes()
+    assert p.exportar("wav").read_bytes() == original
+
+
+def test_exportar_por_capitulo_sai_num_zip() -> None:
+    import zipfile
+
+    p = _com_audio()
+    saida = p.exportar("mp3", por_capitulo=True)
+    assert saida.suffix == ".zip"
+    with zipfile.ZipFile(saida) as z:
+        nomes = z.namelist()
+    assert len(nomes) == 2
+    # Numerados, para o player não embaralhar os capítulos.
+    assert nomes[0].endswith("001 - Capítulo I.mp3")
+    assert all(n.startswith("O Relojoeiro/") for n in nomes)
+
+
+def test_exportacoes_de_formatos_diferentes_convivem() -> None:
+    """Exportar de novo não pode sumir com o que já foi exportado."""
+    p = _com_audio()
+    mp3 = p.exportar("mp3")
+    p.exportar("m4a")
+    assert mp3.exists()
+
+
+def test_exportar_sem_audio_falha_com_recado() -> None:
+    p = _projeto.criar(_livro())
+    with pytest.raises(ProjetoInvalido, match="ainda não tem áudio"):
+        p.exportar("mp3")
+
+
+def test_exportar_por_capitulo_sem_capitulos_falha() -> None:
+    p = _com_audio()
+    with pytest.raises(ProjetoInvalido, match="não tem capítulos"):
+        exportar_audio(p.audio(), [], p.livro, p.pasta / "x", "mp3", por_capitulo=True)

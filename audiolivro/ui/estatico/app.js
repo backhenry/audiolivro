@@ -537,6 +537,11 @@ function ligarOuvir() {
   $("o-avancar15").onclick = () => (som.currentTime += 15);
   $("o-velocidade").onchange = (e) => { som.playbackRate = +e.target.value; guardar(); };
   $("o-revelar").onclick = () => pedir("/api/revelar", {});
+  $("o-baixar").onclick = abrirExportar;
+  $("ex-fechar").onclick = () => $("exportar").close();
+  $("ex-baixar").onclick = exportarEBaixar;
+  $("ex-formato").onchange = notaDeExportacao;
+  $("ex-partes").onchange = notaDeExportacao;
   $("o-voltar").onclick = voltarParaLista;
   $("o-refazer").onclick = voltarParaPreparar;
 
@@ -633,6 +638,66 @@ function rolarAte(el) {
 function irPara(passo) {
   const i = Math.min(Math.max(app.atual + passo, 0), app.falas.length - 1);
   som.currentTime = app.falas[i].inicio;
+}
+
+/* ----------------------------------------------------------- exportar */
+
+function abrirExportar() {
+  som.pause();
+  $("ex-progresso").hidden = true;
+  notaDeExportacao();
+  $("exportar").showModal();
+}
+
+function notaDeExportacao() {
+  const formato = $("ex-formato").value;
+  const partes = $("ex-partes").value === "1";
+  const dur = app.texto?.duracao || 0;
+  // WAV é PCM de 16 bits a 22 kHz mono: ~44 kB por segundo, contra ~8 kB
+  // dos formatos comprimidos. Dizer o tamanho antes evita a surpresa de
+  // um download de 1,5 GB.
+  const porSegundo = formato === "wav" ? 44100 : 8000;
+  const mb = Math.max(1, Math.round((dur * porSegundo) / 1e6));
+  const avisos = [`Aproximadamente ${mb} MB.`];
+  if (formato === "mp3" && !partes)
+    avisos.push("MP3 não guarda capítulos; para navegá-los, use M4B ou separe por capítulo.");
+  if (formato === "wav") avisos.push("WAV não tem perda, mas é grande demais para enviar por mensagem.");
+  if (partes) avisos.push("Cada capítulo vira um arquivo numerado, com título e autor, tudo num .zip.");
+  $("ex-nota").textContent = avisos.join(" ");
+}
+
+async function exportarEBaixar() {
+  $("ex-baixar").disabled = true;
+  $("ex-progresso").hidden = false;
+  try {
+    const tarefa = await pedir("/api/exportar", {
+      formato: $("ex-formato").value,
+      por_capitulo: $("ex-partes").value === "1",
+    });
+    for (;;) {
+      const s = await pedir(`/api/tarefa/${tarefa.id}`);
+      $("ex-cheio").style.width = s.progresso * 100 + "%";
+      $("ex-mensagem").textContent = s.mensagem;
+      $("ex-pct").textContent = Math.round(s.progresso * 100) + "%";
+      if (s.situacao === "concluido") {
+        // Um <a download> clicado por script é o único jeito de o
+        // navegador salvar o arquivo sem sair da página.
+        const a = document.createElement("a");
+        a.href = "/api/baixar?arquivo=" + encodeURIComponent(s.resultado.arquivo);
+        a.download = s.resultado.arquivo;
+        document.body.appendChild(a); a.click(); a.remove();
+        $("ex-mensagem").textContent = `${s.resultado.arquivo} · ${tamanho(s.resultado.bytes)}`;
+        break;
+      }
+      if (s.situacao === "erro") { $("ex-mensagem").textContent = s.erro; break; }
+      if (s.situacao === "cancelado") break;
+      await pausa(500);
+    }
+  } catch (erro) {
+    $("ex-mensagem").textContent = erro.message;
+  } finally {
+    $("ex-baixar").disabled = false;
+  }
 }
 
 /* ------------------------------------------------------- corrigir texto */

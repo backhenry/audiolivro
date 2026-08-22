@@ -39,6 +39,7 @@ NOME_LIVRO = "livro.json"
 NOME_TRILHA = "trilha.json"
 NOME_POSICAO = "posicao.json"
 PASTA_CACHE = ".falas"
+PASTA_EXPORT = "exportado"
 AUDIOS = ("audio.m4b", "audio.m4a", "audio.mp3", "audio.wav")
 
 
@@ -101,6 +102,27 @@ class Projeto:
 
     # -- limpeza ---------------------------------------------------------
 
+    def capitulos_com_tempo(self) -> list[tuple[str, float, float]]:
+        """(título, início, fim) de cada capítulo que virou áudio."""
+        if self.trilha is None:
+            return []
+        marcos = self.trilha.capitulos
+        fins = [c[1] for c in marcos[1:]] + [self.trilha.duracao]
+        return [(t, i, f) for (t, i), f in zip(marcos, fins)]
+
+    def exportar(
+        self, formato: str = "mp3", *, por_capitulo: bool = False, bitrate: str = "64k"
+    ) -> Path:
+        """Produz um arquivo para levar embora, e devolve o caminho dele."""
+        origem = self.audio()
+        if origem is None:
+            raise ProjetoInvalido("Este projeto ainda não tem áudio.")
+        return exportar_audio(
+            origem, self.capitulos_com_tempo(), self.livro,
+            self.pasta / PASTA_EXPORT, formato,
+            por_capitulo=por_capitulo, bitrate=bitrate,
+        )
+
     def apagar_audio(self) -> None:
         """Joga fora o áudio e o cache, preserva o texto revisado.
 
@@ -111,6 +133,7 @@ class Projeto:
             (self.pasta / nome).unlink(missing_ok=True)
         (self.pasta / NOME_TRILHA).unlink(missing_ok=True)
         shutil.rmtree(self.cache, ignore_errors=True)
+        shutil.rmtree(self.pasta / PASTA_EXPORT, ignore_errors=True)
         self.trilha = None
 
     def tamanho(self) -> int:
@@ -137,6 +160,62 @@ class Projeto:
             "posicao": self.posicao().get("segundo", 0.0) if self.trilha else 0.0,
             "modificado": _modificado(self.pasta),
         }
+
+
+def exportar_audio(
+    origem: Path,
+    capitulos: list[tuple[str, float, float]],
+    livro: Livro,
+    pasta: Path,
+    formato: str = "mp3",
+    *,
+    por_capitulo: bool = False,
+    bitrate: str = "64k",
+) -> Path:
+    """Áudio já montado -> arquivo para distribuir.
+
+    Parte do áudio pronto, não das falas: trocar de formato é uma passada
+    de ffmpeg, não uma nova síntese. Num livro de dez horas, é a
+    diferença entre segundos e meia hora.
+
+    Por capítulo, o resultado é um zip. Entregar trinta arquivos soltos
+    pelo navegador seriam trinta downloads, e ninguém quer isso.
+
+    Função de módulo, e não método: ela precisa só do áudio, da trilha e
+    do livro, então serve tanto ao projeto da biblioteca quanto aos
+    arquivos soltos que a linha de comando deixa ao lado do original.
+    """
+    from audiolivro import montar as _montar
+
+    # Não limpamos a pasta: formatos diferentes geram nomes diferentes e
+    # convivem bem. Apagar tudo faria a segunda exportação sumir com a
+    # primeira, o que surpreende quem gerou MP3 e M4B para comparar.
+    pasta.mkdir(parents=True, exist_ok=True)
+    nome = _nome_de_pasta(livro.titulo)
+
+    if not por_capitulo:
+        destino = pasta / f"{nome}.{formato}"
+        # Mesmo formato e arquivo único: nada a recodificar, só um nome
+        # decente no lugar de "audio.m4b".
+        if origem.suffix.lstrip(".") == formato:
+            shutil.copy2(origem, destino)
+            return destino
+        return _montar.converter(
+            origem, destino, bitrate=bitrate,
+            titulo=livro.titulo, autor=livro.autor,
+        )
+
+    if not capitulos:
+        raise ProjetoInvalido("A trilha não tem capítulos para separar.")
+    soltos = pasta / "capitulos"
+    arquivos = _montar.dividir_por_capitulo(
+        origem, [_montar.Capitulo(t, i, f) for t, i, f in capitulos], soltos,
+        extensao=formato, bitrate=bitrate,
+        titulo_do_livro=livro.titulo, autor=livro.autor,
+    )
+    zipado = _montar.compactar(arquivos, pasta / f"{nome} ({formato}).zip", nome)
+    shutil.rmtree(soltos, ignore_errors=True)
+    return zipado
 
 
 # -- a biblioteca --------------------------------------------------------

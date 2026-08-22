@@ -152,7 +152,8 @@
       <span class="tempo" id="o-tempo">0:00 / 0:00</span>
       <span class="espaco"></span>
       <span class="agora" id="o-capitulo"></span>
-      <button class="discreto" id="o-revelar" title="Mostrar o arquivo no Finder">Finder</button>
+      <button id="o-baixar" title="Baixar para enviar a alguém">↓ Baixar</button>
+      <button class="discreto" id="o-revelar" title="Mostrar o arquivo na pasta">Pasta</button>
       <select id="o-velocidade" title="Velocidade">
         <option value="0.8">0,8×</option>
         <option value="0.9">0,9×</option>
@@ -180,6 +181,41 @@
     <button id="editor-pular-bloco">Não ler o parágrafo</button>
     <button id="editor-pular">Não ler esta frase</button>
     <button class="principal" id="editor-salvar">Salvar</button>
+  </div>
+</dialog>
+
+<dialog id="exportar">
+  <h3>Baixar o audiobook</h3>
+  <p class="dica">
+    O arquivo sai com título, autor e capítulos preenchidos, para chegar
+    com nome de verdade no player de quem receber.
+  </p>
+  <div class="escolhas">
+    <div>
+      <label for="ex-formato">Formato</label>
+      <select id="ex-formato">
+        <option value="mp3" selected>MP3 — toca em qualquer lugar</option>
+        <option value="m4b">M4B — capítulos de verdade</option>
+        <option value="m4a">M4A</option>
+        <option value="wav">WAV — sem perda, arquivo enorme</option>
+      </select>
+    </div>
+    <div>
+      <label for="ex-partes">Arquivo</label>
+      <select id="ex-partes">
+        <option value="0" selected>Um só, o livro inteiro</option>
+        <option value="1">Um por capítulo, num .zip</option>
+      </select>
+    </div>
+  </div>
+  <p class="aviso" id="ex-nota"></p>
+  <div class="progresso" id="ex-progresso" hidden>
+    <div class="trilho"><div class="cheio" id="ex-cheio"></div></div>
+    <div class="rotulo"><span id="ex-mensagem">…</span><span id="ex-pct"></span></div>
+  </div>
+  <div class="acoes">
+    <button id="ex-fechar">Fechar</button>
+    <button class="principal" id="ex-baixar">Preparar e baixar</button>
   </div>
 </dialog>
 

@@ -249,6 +249,69 @@ def gerar(
 
 
 @app.command()
+def exportar(
+    alvo: Annotated[str, typer.Argument(help="Nome do projeto, ou o caminho de um .m4b gerado.")],
+    formato: Annotated[str, typer.Option("--formato", "-f", help="mp3, m4b, m4a ou wav.")] = "mp3",
+    por_capitulo: Annotated[bool, typer.Option("--por-capitulo", help="Um arquivo por capítulo, num .zip.")] = False,
+    saida: Annotated[Path | None, typer.Option("-o", "--saida", help="Copiar o resultado para cá.")] = None,
+) -> None:
+    """Converte um audiobook já gerado para outro formato, para distribuir.
+
+    Não re-sintetiza: parte do áudio pronto, então é uma passada de
+    ffmpeg mesmo num livro de dez horas. O arquivo sai com título, autor
+    e número de faixa preenchidos, para chegar com nome de verdade no
+    player de quem receber.
+    """
+    from audiolivro import projeto as _proj
+
+    caminho = Path(alvo).expanduser()
+    with console.status(f"Preparando {formato}…"):
+        try:
+            if caminho.exists() and caminho.is_file():
+                arquivo = _exportar_arquivo_solto(caminho, formato, por_capitulo)
+            else:
+                arquivo = _proj.carregar(alvo).exportar(formato, por_capitulo=por_capitulo)
+        except (_proj.ProjetoInvalido, FileNotFoundError) as erro:
+            console.print(f"[red]{erro}[/red]")
+            raise typer.Exit(1) from erro
+
+    if saida is not None:
+        saida.parent.mkdir(parents=True, exist_ok=True)
+        destino = saida / arquivo.name if saida.is_dir() else saida
+        shutil.copy2(arquivo, destino)
+        arquivo = destino
+
+    console.print(f"[green]✓[/green] {arquivo}  ({arquivo.stat().st_size / 1e6:.0f} MB)")
+
+
+@app.command()
+def projetos() -> None:
+    """Lista os audiobooks da sua biblioteca."""
+    from audiolivro import projeto as _proj
+
+    achados = _proj.listar()
+    if not achados:
+        console.print(f"Nenhum projeto em {_proj.BIBLIOTECA}.")
+        return
+
+    tabela = Table(title="Meus livros")
+    tabela.add_column("Projeto")
+    tabela.add_column("Autor")
+    tabela.add_column("Estado")
+    tabela.add_column("Duração", justify="right")
+    tabela.add_column("Tamanho", justify="right")
+    for p in achados:
+        r = p.resumo()
+        tabela.add_row(
+            r["nome"], r["autor"] or "—",
+            "pronto" if r["pronto"] else "só texto",
+            _hms(r["duracao"]) if r["pronto"] else "—",
+            f"{r['tamanho'] / 1e6:.0f} MB",
+        )
+    console.print(tabela)
+
+
+@app.command()
 def capitulos(
     arquivo: Annotated[Path, typer.Argument(help="Livro ou .livro.json.")],
     ocr: OpOcr = "auto",
@@ -404,6 +467,35 @@ def _resumo(livro: Livro) -> None:
     console.print(
         f"{len(livro.capitulos)} capítulos · {len(livro.falas())} falas · "
         f"{livro.caracteres:,} caracteres".replace(",", ".")
+    )
+
+
+def _exportar_arquivo_solto(audio: Path, formato: str, por_capitulo: bool) -> Path:
+    """Exporta a partir de um .m4b gerado pela linha de comando.
+
+    O `gerar` deixa `livro.m4b`, `livro.trilha.json` e `livro.livro.json`
+    lado a lado, em vez de numa pasta de projeto. Sem aceitar essa forma,
+    quem usa só o terminal nunca alcançaria o `exportar`.
+    """
+    from audiolivro import projeto as _proj
+
+    base = audio.with_suffix("")
+    trilha_json = base.with_suffix(".trilha.json")
+    livro_json = base.with_suffix(".livro.json")
+    faltando = [p.name for p in (trilha_json, livro_json) if not p.exists()]
+    if faltando:
+        raise FileNotFoundError(
+            f"Falta {' e '.join(faltando)} ao lado de {audio.name}. "
+            "Gere de novo com 'audiolivro gerar' para produzi-los."
+        )
+
+    trilha = Trilha.carregar(trilha_json)
+    fins = [c[1] for c in trilha.capitulos[1:]] + [trilha.duracao]
+    partes = [(t, i, f) for (t, i), f in zip(trilha.capitulos, fins)]
+    return _proj.exportar_audio(
+        audio, partes, Livro.carregar(livro_json),
+        audio.parent / f"{base.name}-exportado", formato,
+        por_capitulo=por_capitulo,
     )
 
 

@@ -295,6 +295,9 @@ dialog textarea {
 }
 dialog .acoes { display: flex; gap: .5rem; justify-content: flex-end; margin-top: 1rem; flex-wrap: wrap; }
 dialog .acoes button { font-size: .82rem; }
+dialog .escolhas { grid-template-columns: 1fr; gap: .8rem; margin: 1rem 0 .4rem; }
+dialog .aviso { margin-top: .2rem; }
+dialog .progresso { margin: 1rem 0 0; }
 
 @media (max-width: 820px) {
   #ouvir { grid-template-columns: 1fr; }

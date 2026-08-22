@@ -186,32 +186,119 @@ def aplicar_capitulos(audio: Path, metadados: Path, destino: Path) -> Path:
     return destino
 
 
-def dividir_por_capitulo(
-    audio: Path, capitulos: list[Capitulo], pasta: Path, *, extensao: str = "m4a"
-) -> list[Path]:
-    """Um arquivo por capítulo, para quem prefere lista de reprodução.
+def _rodar(comando: list[str]) -> None:
+    resultado = subprocess.run(comando, capture_output=True, text=True)
+    if resultado.returncode != 0:
+        raise FFmpegError(comando, resultado.returncode, resultado.stderr)
 
-    Corta com `-c copy`: rápido, sem perda, e alinhado ao quadro AAC mais
-    próximo — a diferença de alguns milissegundos não é audível numa
-    fronteira que já é silêncio.
+
+def _etiquetas(
+    titulo: str, autor: str, album: str = "", faixa: int | None = None, total: int | None = None
+) -> list[str]:
+    """Metadados que fazem o arquivo aparecer com nome no player.
+
+    Sem isto, um MP3 solto entra na biblioteca de quem recebeu como
+    "audio", sem autor e sem ordem — e um audiobook de trinta capítulos
+    fora de ordem é inutilizável.
+    """
+    marcas = []
+    for chave, valor in (("title", titulo), ("artist", autor),
+                         ("album", album or titulo), ("album_artist", autor),
+                         ("genre", "Audiobook")):
+        if valor:
+            marcas += ["-metadata", f"{chave}={valor}"]
+    if faixa is not None:
+        marcas += ["-metadata", f"track={faixa}" + (f"/{total}" if total else "")]
+    return marcas
+
+
+def converter(
+    origem: Path, destino: Path, *, bitrate: str = BITRATE_PADRAO,
+    titulo: str = "", autor: str = "",
+) -> Path:
+    """Converte o áudio já pronto para outro formato, sem re-sintetizar.
+
+    Trocar de formato pela geração completa funcionaria — o cache
+    devolveria cada fala do disco — mas percorreria o livro inteiro fala
+    a fala para montar de novo. Recodificar o arquivo pronto é uma
+    passada só do ffmpeg, e leva segundos mesmo em dez horas de áudio.
+
+    A perda de qualidade de recodificar um áudio já comprimido é real,
+    mas irrelevante em voz a 64 kbit/s: o que se perde está muito acima
+    da banda que a fala ocupa.
+    """
+    codec, formato_saida, _ext = FORMATOS[destino.suffix.lstrip(".")]
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    comando = [
+        caminho_do_ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
+        "-i", str(origem), "-vn", "-c:a", codec,
+    ]
+    if codec != "pcm_s16le":
+        comando += ["-b:a", bitrate]
+    comando += _etiquetas(titulo, autor) + ["-f", formato_saida, str(destino)]
+    _rodar(comando)
+    return destino
+
+
+def dividir_por_capitulo(
+    audio: Path,
+    capitulos: list[Capitulo],
+    pasta: Path,
+    *,
+    extensao: str = "m4a",
+    bitrate: str = BITRATE_PADRAO,
+    titulo_do_livro: str = "",
+    autor: str = "",
+) -> list[Path]:
+    """Um arquivo por capítulo, para distribuir ou montar lista de reprodução.
+
+    Quando a extensão de saída é a mesma da entrada, corta com `-c copy`:
+    rápido, sem perda, e alinhado ao quadro mais próximo — a diferença de
+    alguns milissegundos não é audível numa fronteira que já é silêncio.
+    Sendo outra, recodifica, porque copiar AAC para dentro de um MP3 não
+    existe.
     """
     pasta.mkdir(parents=True, exist_ok=True)
+    mesmo_formato = audio.suffix.lstrip(".") == extensao
+    codec = FORMATOS[extensao][0]
     saidas: list[Path] = []
+
     for i, capitulo in enumerate(capitulos, start=1):
-        nome = _nome_de_arquivo(f"{i:03d} - {capitulo.titulo}")
-        destino = pasta / f"{nome}.{extensao}"
+        destino = pasta / f"{_nome_de_arquivo(f'{i:03d} - {capitulo.titulo}')}.{extensao}"
         comando = [
             caminho_do_ffmpeg(), "-hide_banner", "-loglevel", "error", "-y",
             "-i", str(audio),
-            "-ss", f"{capitulo.inicio:.3f}", "-to", f"{capitulo.fim:.3f}",
-            "-c", "copy", "-metadata", f"title={capitulo.titulo}",
-            "-metadata", f"track={i}", str(destino),
+            "-ss", f"{capitulo.inicio:.3f}", "-to", f"{capitulo.fim:.3f}", "-vn",
         ]
-        resultado = subprocess.run(comando, capture_output=True, text=True)
-        if resultado.returncode != 0:
-            raise FFmpegError(comando, resultado.returncode, resultado.stderr)
+        if mesmo_formato:
+            comando += ["-c", "copy"]
+        else:
+            comando += ["-c:a", codec]
+            if codec != "pcm_s16le":
+                comando += ["-b:a", bitrate]
+        comando += _etiquetas(
+            capitulo.titulo, autor, album=titulo_do_livro, faixa=i, total=len(capitulos)
+        )
+        comando.append(str(destino))
+        _rodar(comando)
         saidas.append(destino)
     return saidas
+
+
+def compactar(arquivos: list[Path], destino: Path, pasta_interna: str = "") -> Path:
+    """Junta os capítulos num zip, para caber num anexo de e-mail.
+
+    Sem compressão: o áudio já está comprimido, e tentar de novo gastaria
+    minutos de CPU para economizar quase nada.
+    """
+    import zipfile
+
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    with zipfile.ZipFile(destino, "w", zipfile.ZIP_STORED) as z:
+        for arquivo in arquivos:
+            interno = f"{pasta_interna}/{arquivo.name}" if pasta_interna else arquivo.name
+            z.write(arquivo, interno)
+    return destino
 
 
 def _nome_de_arquivo(texto: str, limite: int = 70) -> str:
