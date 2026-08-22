@@ -34,12 +34,12 @@ import sys
 import threading
 from pathlib import Path
 
-from fastapi import Body, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 from audiolivro import ingest, projeto as _projeto, sintetizar as _sintetizar
 from audiolivro.projeto import Projeto, ProjetoInvalido
-from audiolivro.voz import catalogo, disponiveis
+from audiolivro.voz import MotorIndisponivel, catalogo, disponiveis
 from audiolivro.tarefas import Controle, Executor, Tarefa
 
 ESTATICO = Path(__file__).parent / "estatico"
@@ -233,6 +233,40 @@ def criar_app(estado: Estado | None = None) -> FastAPI:
                 for b in capitulo.blocos for f in b.falas
             ])
         raise HTTPException(404, f"Capítulo {alvo} não existe.")
+
+    @app.get("/api/fala-audio")
+    def ouvir_fala(id: str, motor: str = "", voz: str = "") -> Response:
+        """Sintetiza uma frase sozinha e devolve o som dela.
+
+        Serve para ouvir o efeito de uma correção sem gerar o livro
+        inteiro. Vai para o mesmo cache da geração completa, então a
+        frase ouvida aqui já fica pronta depois — ouvir não é trabalho
+        jogado fora, é trabalho adiantado.
+
+        Sai em WAV, e não no FLAC que está no cache: o `<audio>` do
+        navegador toca WAV em qualquer versão, e converter uma frase custa
+        milissegundos.
+        """
+        import io
+
+        import soundfile as sf
+
+        projeto = estado.exigir()
+        alvo = next((f for f in projeto.livro.falas() if f.id == id), None)
+        if alvo is None:
+            raise HTTPException(404, f"Fala {id} não existe.")
+
+        try:
+            flac = _sintetizar.audio_de_uma_fala(
+                alvo, motor=motor or None, voz=voz or None, cache=projeto.cache
+            )
+        except MotorIndisponivel as erro:
+            raise HTTPException(503, str(erro)) from erro
+
+        amostras, taxa = sf.read(flac, dtype="int16")
+        buffer = io.BytesIO()
+        sf.write(buffer, amostras, taxa, format="WAV", subtype="PCM_16")
+        return Response(content=buffer.getvalue(), media_type="audio/wav")
 
     @app.post("/api/fechar")
     def fechar() -> JSONResponse:

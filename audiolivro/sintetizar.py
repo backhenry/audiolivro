@@ -280,6 +280,29 @@ def _fase_montagem(
     )
 
 
+def audio_de_uma_fala(
+    fala: Fala,
+    *,
+    motor: str | None = None,
+    voz: str | None = None,
+    velocidade: float = 1.0,
+    cache: Path,
+) -> Path:
+    """Sintetiza uma fala isolada e devolve o arquivo dela, do cache.
+
+    É o que permite ouvir uma frase antes de gerar o livro inteiro. Usa
+    exatamente o mesmo cache da geração completa, então nada é
+    desperdiçado: a frase ouvida aqui já fica pronta para quando o livro
+    for gerado — e, se ela já tinha sido sintetizada, sai na hora.
+    """
+    instancia, escolhida = abrir(motor, voz)
+    cache.mkdir(parents=True, exist_ok=True)
+    destino = cache / f"{_chave(fala, instancia.nome, escolhida, velocidade)}.flac"
+    if not destino.exists():
+        _sintetizar_fala(fala, destino, instancia, escolhida, velocidade)
+    return destino
+
+
 def prever(livro: Livro, motor: str | None = None) -> dict:
     """Estimativa antes de começar — quanto tempo, quanto arquivo.
 

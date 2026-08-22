@@ -341,7 +341,11 @@ function ligarPreparar() {
     const linha = e.target.closest(".fala-revisao");
     if (!linha) return;
     const f = app.revisao?.[linha.dataset.id];
-    if (f) abrirEditor({ ...f, falado: f.texto });
+    if (!f) return;
+    const acao = e.target.closest("[data-acao]")?.dataset.acao;
+    if (acao === "tocar") return ouvirFala(linha, f);
+    // Sem botão, o clique no texto também edita: é o alvo maior.
+    abrirEditor({ ...f, falado: f.texto });
   });
 
   $("trocar-livro").onclick = voltarParaLista;
@@ -432,10 +436,61 @@ function desenharFalasDoCapitulo(caixa, falas) {
   app.revisao = app.revisao || {};
   for (const f of falas) app.revisao[f.id] = f;
   caixa.innerHTML = falas.length
-    ? falas.map((f) => `<p class="fala-revisao ${f.ler ? "" : "fora"}" data-id="${f.id}"
-         title="Clique para reescrever ou tirar do áudio">${escapar(f.texto)}</p>`).join("")
+    ? falas.map((f) => `<p class="fala-revisao ${f.ler ? "" : "fora"}" data-id="${f.id}">
+         <span class="acoes-fala">
+           <button data-acao="tocar" title="Ouvir só esta frase">▶</button>
+           <button data-acao="editar" title="Reescrever ou tirar do áudio">✎</button>
+         </span>${escapar(f.texto)}</p>`).join("")
     : '<p class="carregando">nada para ler neste capítulo</p>';
 }
+
+/* Toca uma frase sozinha, sintetizada na hora.
+ *
+ * Um <audio> só para todas as prévias: tocar uma nova interrompe a
+ * anterior, que é o que se espera ao clicar em outra linha, e evita um
+ * coro de frases sobrepostas. */
+const previa = new Audio();
+
+async function ouvirFala(linha, fala) {
+  const botao = linha.querySelector('[data-acao="tocar"]');
+  if (!previa.paused && previa.dataset.id === fala.id) {
+    previa.pause();
+    return marcarTocando(null);
+  }
+  previa.pause();
+  marcarTocando(botao, "…");
+  botao.disabled = true;
+  try {
+    // A voz da prévia é a que está escolhida na tela: ouvir numa voz e
+    // gerar em outra tornaria a prévia inútil. E o resultado vai para o
+    // mesmo cache da geração, então nada é sintetizado duas vezes.
+    const [motor, voz] = ($("voz").value || ":").split(":");
+    previa.src = `/api/fala-audio?id=${encodeURIComponent(fala.id)}`
+               + `&motor=${encodeURIComponent(motor)}&voz=${encodeURIComponent(voz)}`;
+    previa.dataset.id = fala.id;
+    await previa.play();
+    marcarTocando(botao, "❙❙");
+  } catch (erro) {
+    marcarTocando(null);
+    falhar("erro-preparar", new Error("Não consegui sintetizar esta frase: " + erro.message));
+  } finally {
+    botao.disabled = false;
+  }
+}
+
+function marcarTocando(botao, rotulo = "▶") {
+  for (const b of document.querySelectorAll('.fala-revisao [data-acao="tocar"]')) {
+    b.classList.remove("tocando");
+    b.textContent = "▶";
+  }
+  if (botao) {
+    botao.classList.add("tocando");
+    botao.textContent = rotulo;
+  }
+}
+
+previa.addEventListener("ended", () => marcarTocando(null));
+previa.addEventListener("pause", () => marcarTocando(null));
 
 async function gerar() {
   $("erro-preparar").hidden = true;

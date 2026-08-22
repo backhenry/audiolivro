@@ -628,11 +628,18 @@ seleção. Desmarque a ficha catalográfica e o índice, e eles saem do áudio.
 O contador de falas passa a mostrar "4 de 14", e a estimativa de duração
 cai junto.
 
-Abrindo um capítulo, você vê **todas as frases dele**, cada uma com um
-**✎** ao lado. Clique em qualquer uma para reescrever o texto que vai
-para a voz, ou para tirá-la do áudio. É onde se conserta o livro antes de
-gastar horas sintetizando — melhor que descobrir o problema no meio da
-escuta.
+Abrindo um capítulo, você vê **todas as frases dele**, cada uma com dois
+botões:
+
+| | |
+|---|---|
+| **▶** | ouve só aquela frase, sintetizada na hora, na voz escolhida |
+| **✎** | reescreve o texto que vai para a voz, ou tira a frase do áudio |
+
+É o ciclo curto de revisão: ouviu um nome errado, corrigiu, ouviu de novo
+— tudo antes de gastar horas gerando o livro. A prévia usa o mesmo cache
+da geração completa, então nada é sintetizado duas vezes: a frase ouvida
+aqui já fica pronta para depois.
 
 **Depois de ouvir**, no player, clique numa frase segurando **Alt**. O
 diálogo que abre tem três saídas:
