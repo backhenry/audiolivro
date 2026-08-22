@@ -38,7 +38,9 @@ from fastapi import Body, FastAPI, File, Form, HTTPException, Response, UploadFi
 from fastapi.responses import FileResponse, JSONResponse
 
 from audiolivro import ingest, projeto as _projeto, sintetizar as _sintetizar
+from audiolivro.modelo import Fala
 from audiolivro.projeto import Projeto, ProjetoInvalido
+from audiolivro.texto import pronuncia as _pronuncia
 from audiolivro.voz import MotorIndisponivel, catalogo, disponiveis
 from audiolivro.tarefas import Controle, Executor, Tarefa
 
@@ -258,11 +260,71 @@ def criar_app(estado: Estado | None = None) -> FastAPI:
 
         try:
             flac = _sintetizar.audio_de_uma_fala(
-                alvo, motor=motor or None, voz=voz or None, cache=projeto.cache
+                alvo, motor=motor or None, voz=voz or None,
+                pronuncia=projeto.pronuncia(), cache=projeto.cache,
             )
         except MotorIndisponivel as erro:
             raise HTTPException(503, str(erro)) from erro
 
+        amostras, taxa = sf.read(flac, dtype="int16")
+        buffer = io.BytesIO()
+        sf.write(buffer, amostras, taxa, format="WAV", subtype="PCM_16")
+        return Response(content=buffer.getvalue(), media_type="audio/wav")
+
+    @app.get("/api/pronuncia")
+    def ler_pronuncia() -> JSONResponse:
+        """O dicionário, com quantas falas cada entrada alcança.
+
+        A contagem é o que torna a regra confiável: mostra de cara que
+        "Cinérea" aparece em 47 falas, e denuncia a entrada que não casa
+        com nada — quase sempre um acento ou um plural fora do lugar.
+        """
+        projeto = estado.exigir()
+        dicionario = projeto.pronuncia()
+        textos = [f.texto for f in projeto.livro.falas()]
+        return JSONResponse([
+            {"termo": k, "como": v, "falas": _pronuncia.ocorrencias(textos, k)}
+            for k, v in sorted(dicionario.items())
+        ])
+
+    @app.post("/api/pronuncia")
+    def gravar_pronuncia(dados: dict = Body(...)) -> JSONResponse:
+        """Adiciona, muda ou remove uma entrada. `como` vazio remove."""
+        projeto = estado.exigir()
+        termo = str(dados.get("termo", "")).strip()
+        como = str(dados.get("como", "")).strip()
+        if not termo:
+            raise HTTPException(400, "Informe a palavra a corrigir.")
+
+        dicionario = projeto.pronuncia()
+        if como:
+            dicionario[termo] = como
+        else:
+            dicionario.pop(termo, None)
+        projeto.gravar_pronuncia(dicionario)
+
+        textos = [f.texto for f in projeto.livro.falas()]
+        return JSONResponse({
+            "termo": termo, "como": como,
+            "falas": _pronuncia.ocorrencias(textos, termo),
+            "removido": not como,
+        })
+
+    @app.get("/api/pronuncia-previa")
+    def previa_pronuncia(termo: str, como: str, motor: str = "", voz: str = "") -> Response:
+        """Ouve só a palavra corrigida, antes de gravar a regra."""
+        import io
+
+        import soundfile as sf
+
+        projeto = estado.exigir()
+        alvo = Fala(id="previa", texto=(como or termo).strip() + ".", exibicao=termo)
+        try:
+            flac = _sintetizar.audio_de_uma_fala(
+                alvo, motor=motor or None, voz=voz or None, cache=projeto.cache
+            )
+        except MotorIndisponivel as erro:
+            raise HTTPException(503, str(erro)) from erro
         amostras, taxa = sf.read(flac, dtype="int16")
         buffer = io.BytesIO()
         sf.write(buffer, amostras, taxa, format="WAV", subtype="PCM_16")
@@ -362,6 +424,7 @@ def criar_app(estado: Estado | None = None) -> FastAPI:
                 velocidade=float(dados.get("velocidade", 1.0)),
                 formato=formato,
                 escala_de_pausa=float(dados.get("pausas", 1.0)),
+                pronuncia=projeto.pronuncia(),
                 cache=projeto.cache,
                 ao_progredir=progresso,
                 deve_parar=lambda: controle.tarefa.cancelada,

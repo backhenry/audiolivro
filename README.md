@@ -72,6 +72,8 @@ a voz, e ouça — com o texto acompanhando na tela.
 - [As vozes](#as-vozes) — **qual usar em português**
 - [Corrigindo como uma palavra é lida](#corrigindo-como-uma-palavra-é-lida)
 - [Tirando trechos do áudio](#tirando-trechos-do-áudio)
+- [Como pronunciar](#como-pronunciar-a-correção-que-vale-o-livro-inteiro)
+- [Acessibilidade da interface](#acessibilidade-da-interface)
 - [Baixando para distribuir](#baixando-para-distribuir)
 - [Onde ficam os arquivos](#onde-ficam-os-arquivos)
 - [O que o extrator conserta](#o-que-o-extrator-conserta)
@@ -661,6 +663,54 @@ muda é só o que se lê em voz alta. Depois de marcar, clique em **Refazer o
 
 ---
 
+## Como pronunciar: a correção que vale o livro inteiro
+
+Toda voz erra nome próprio, marca e palavra estrangeira. Corrigir frase a
+frase resolve uma ocorrência; num livro sobre a **Cinérea**, o nome
+aparece em dezenas delas.
+
+Na tela de conferência, abra **Como pronunciar** e escreva a palavra como
+ela deve soar:
+
+| palavra no livro | como falar | falas |
+|---|---|---|
+| Cinérea | Cinêrea | 17 |
+| Kierkegaard | Quiérquegôr | 4 |
+
+A coluna **falas** mostra o alcance da regra, e denuncia na hora a entrada
+que não casa com nada — quase sempre um acento ou um plural fora do lugar.
+O **▶** ao lado ouve a palavra antes de você gravar a regra.
+
+O dicionário se aplica **na síntese**, não na extração. É o detalhe que
+faz a coisa funcionar:
+
+- mudar o dicionário não exige reextrair, então as correções que você fez
+  frase a frase continuam lá;
+- o `livro.json` guarda o texto do livro, e não uma versão já deformada
+  para a voz;
+- como a chave do cache é o texto que chega ao motor, mudar uma entrada
+  re-sintetiza exatamente as falas que a contêm, e nenhuma outra.
+
+O dicionário fica em `pronuncia.json`, dentro da pasta do projeto.
+
+---
+
+## Acessibilidade da interface
+
+O programa serve quem depende de áudio para ler, então a interface
+também precisa ser operável sem ver a tela:
+
+- todo controle tem rótulo — nenhum botão é anunciado só como "botão";
+- o foco é sempre visível, para quem navega por teclado;
+- barra de progresso, erros e troca de tela são anunciados;
+- a barra do player é um `slider` de verdade, com setas, Home e End;
+- o player inteiro funciona por teclado (veja a tabela de teclas acima).
+
+Não é uma auditoria completa de WCAG, e testes com leitores de tela reais
+são bem-vindos.
+
+---
+
 ## Baixando para distribuir
 
 O audiobook fica em `~/Audiolivros`, mas você raramente quer o caminho: quer
@@ -711,6 +761,7 @@ Cada livro é uma pasta em `~/Audiolivros`:
     audio.m4b         o audiobook
     posicao.json      onde a escuta parou
     original.epub     o arquivo de onde tudo veio
+    pronuncia.json    como falar nomes próprios deste livro
     exportado/        o que você baixou para distribuir
     .falas/           cache de síntese
 ```

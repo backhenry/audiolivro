@@ -114,6 +114,11 @@ function desenharProjetos(projetos) {
 
 function mostrar(tela) {
   for (const nome of ["abrir", "preparar", "ouvir"]) $(nome).hidden = nome !== tela;
+  anunciar({
+    abrir: "Meus livros",
+    preparar: "Conferir o texto antes de gerar",
+    ouvir: "Tocando o audiobook",
+  }[tela] || "");
 }
 
 /* ================================================================ abrir */
@@ -209,6 +214,7 @@ function aceitar(detalhe) {
 function entrarEmPreparar(detalhe) {
   app.livro = detalhe;
   desenharPreparar(detalhe);
+  carregarPronuncia();
   $("ouvir-pronto").hidden = !detalhe.pronto;
   $("progresso").hidden = true;
   $("erro-preparar").hidden = true;
@@ -348,6 +354,8 @@ function ligarPreparar() {
     abrirEditor({ ...f, falado: f.texto });
   });
 
+  ligarPronuncia();
+
   $("trocar-livro").onclick = voltarParaLista;
   $("ouvir-pronto").onclick = abrirPlayer;
   $("reextrair").onclick = async () => {
@@ -434,6 +442,93 @@ function desenharPreparar(livro) {
 async function voltarParaPreparar() {
   som.pause();
   entrarEmPreparar(app.livro);
+}
+
+/* ------------------------------------------------- dicionário de pronúncia */
+
+function ligarPronuncia() {
+  $("pr-adicionar").onclick = adicionarPronuncia;
+  $("pr-ouvir").onclick = () => ouvirPronuncia($("pr-termo").value, $("pr-como").value);
+  for (const campo of ["pr-termo", "pr-como"]) {
+    $(campo).addEventListener("keydown", (e) => {
+      if (e.key === "Enter") adicionarPronuncia();
+    });
+  }
+  $("pr-lista").addEventListener("click", async (e) => {
+    const botao = e.target.closest("[data-acao]");
+    if (!botao) return;
+    const termo = botao.closest("tr").dataset.termo;
+    const como = botao.closest("tr").dataset.como;
+    if (botao.dataset.acao === "ouvir") return ouvirPronuncia(termo, como);
+    if (botao.dataset.acao === "remover") {
+      // Remover é gravar com o "como" vazio: uma regra só no servidor,
+      // em vez de um endpoint de exclusão que faria a mesma coisa.
+      await pedir("/api/pronuncia", { termo, como: "" });
+      carregarPronuncia();
+    }
+  });
+}
+
+async function carregarPronuncia() {
+  let entradas = [];
+  try {
+    entradas = await pedir("/api/pronuncia");
+  } catch {
+    return;  // sem projeto aberto ainda
+  }
+  $("pr-conta").textContent = entradas.length
+    ? `${entradas.length} ${entradas.length === 1 ? "palavra" : "palavras"}`
+    : "nenhuma ainda";
+  $("pr-lista").innerHTML = entradas.map((e) => `
+    <tr data-termo="${escapar(e.termo)}" data-como="${escapar(e.como)}">
+      <td>${escapar(e.termo)}</td>
+      <td class="como">${escapar(e.como)}</td>
+      <td class="quantas ${e.falas ? "" : "zero"}">${
+        e.falas ? e.falas : "nenhuma"}</td>
+      <td class="acoes-linha">
+        <button data-acao="ouvir" aria-label="Ouvir ${escapar(e.termo)}" title="Ouvir">▶</button>
+        <button data-acao="remover" aria-label="Remover ${escapar(e.termo)}" title="Remover">✕</button>
+      </td>
+    </tr>`).join("");
+}
+
+async function adicionarPronuncia() {
+  const termo = $("pr-termo").value.trim();
+  const como = $("pr-como").value.trim();
+  $("pr-erro").hidden = true;
+  if (!termo || !como) {
+    return falhar("pr-erro", new Error("Preencha a palavra e como ela deve soar."));
+  }
+  try {
+    const r = await pedir("/api/pronuncia", { termo, como });
+    $("pr-termo").value = $("pr-como").value = "";
+    $("pr-termo").focus();
+    await carregarPronuncia();
+    // Zero ocorrências quase sempre é acento ou plural fora do lugar, e
+    // é melhor dizer isso na hora do que deixar a regra silenciosamente
+    // sem efeito no livro inteiro.
+    if (!r.falas) {
+      falhar("pr-erro", new Error(
+        `"${termo}" não aparece em nenhuma fala do livro. Confira o acento, ` +
+        "a maiúscula não importa mas o plural sim."));
+    }
+  } catch (erro) {
+    falhar("pr-erro", erro);
+  }
+}
+
+async function ouvirPronuncia(termo, como) {
+  if (!termo && !como) return;
+  const [motor, voz] = ($("voz").value || ":").split(":");
+  previa.pause();
+  previa.src = `/api/pronuncia-previa?termo=${encodeURIComponent(termo)}`
+             + `&como=${encodeURIComponent(como || termo)}`
+             + `&motor=${encodeURIComponent(motor)}&voz=${encodeURIComponent(voz)}`;
+  try {
+    await previa.play();
+  } catch (erro) {
+    falhar("pr-erro", new Error("Não consegui sintetizar: " + erro.message));
+  }
 }
 
 function desenharFalasDoCapitulo(caixa, falas) {
@@ -524,9 +619,11 @@ async function gerar() {
 async function acompanhar(id) {
   for (;;) {
     const tarefa = await pedir(`/api/tarefa/${id}`);
+    const pct = Math.round(tarefa.progresso * 100);
     $("p-cheio").style.width = tarefa.progresso * 100 + "%";
     $("p-mensagem").textContent = tarefa.mensagem;
-    $("p-percentual").textContent = Math.round(tarefa.progresso * 100) + "%";
+    $("p-percentual").textContent = pct + "%";
+    $("p-barra")?.setAttribute("aria-valuenow", pct);
 
     if (tarefa.situacao === "concluido") {
       // O projeto agora tem áudio; sem atualizar isto, voltar para os
@@ -659,6 +756,13 @@ function ligarOuvir() {
     const caixa = e.currentTarget.getBoundingClientRect();
     som.currentTime = ((e.clientX - caixa.left) / caixa.width) * (som.duration || 0);
   };
+  // A barra é um `slider`, então precisa responder ao teclado como um.
+  $("o-trilho").addEventListener("keydown", (e) => {
+    const passo = { ArrowLeft: -15, ArrowRight: 15, Home: -1e9, End: 1e9 }[e.key];
+    if (passo === undefined) return;
+    e.preventDefault();
+    som.currentTime = Math.max(0, Math.min(som.currentTime + passo, som.duration || 0));
+  });
 
   som.addEventListener("timeupdate", atualizar);
   som.addEventListener("loadedmetadata", atualizar);
@@ -753,6 +857,10 @@ function atualizar() {
   const total = som.duration || app.texto?.duracao || 1;
   $("o-decorrido").style.width = (t / total) * 100 + "%";
   $("o-tempo").textContent = `${hms(t)} / ${hms(total)}`;
+  const trilho = $("o-trilho");
+  trilho.setAttribute("aria-valuemax", Math.round(total));
+  trilho.setAttribute("aria-valuenow", Math.round(t));
+  trilho.setAttribute("aria-valuetext", `${hms(t)} de ${hms(total)}`);
 
   const i = indiceEm(t);
   if (i !== app.atual && app.falas[i]) {
@@ -992,6 +1100,15 @@ function falhar(id, erro) {
 }
 
 const pausa = (ms) => new Promise((r) => setTimeout(r, ms));
+
+/* Avisa quem usa leitor de tela sobre o que aconteceu fora da tela.
+ * Mudar a tela inteira sem dizer nada deixa a pessoa sem saber que a
+ * página é outra — o foco continua onde estava e nada é anunciado. */
+function anunciar(mensagem) {
+  const alvo = $("anuncio");
+  alvo.textContent = "";
+  setTimeout(() => (alvo.textContent = mensagem), 50);
+}
 
 function hms(s) {
   if (!isFinite(s) || s < 0) return "0:00";

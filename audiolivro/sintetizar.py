@@ -36,6 +36,7 @@ import numpy as np
 
 from audiolivro import montar as _montar
 from audiolivro.modelo import Fala, Livro, Marca, Trilha
+from audiolivro.texto import pronuncia as _pronuncia
 from audiolivro.voz import abrir, aparar, normalizar_volume
 from audiolivro.voz.base import Motor
 
@@ -66,6 +67,7 @@ def sintetizar(
     formato: str = "m4b",
     bitrate: str = _montar.BITRATE_PADRAO,
     escala_de_pausa: float = 1.0,
+    pronuncia: dict[str, str] | None = None,
     threads: int | None = None,
     cache: Path | None = None,
     ao_progredir: Callable[[Progresso], None] | None = None,
@@ -88,13 +90,22 @@ def sintetizar(
     _avisar = ao_progredir or (lambda _p: None)
     _parar = deve_parar or (lambda: False)
 
+    # O dicionário é resolvido uma vez, aqui, e o resultado acompanha a
+    # fala até o motor. Aplicá-lo lá dentro obrigaria cada ponto do
+    # caminho a lembrar de fazê-lo — e esquecer num deles daria um cache
+    # com chave de um texto e conteúdo de outro.
+    regex = _pronuncia.compilar(pronuncia or {})
+    falado = {
+        f.id: _pronuncia.aplicar(f.texto, pronuncia or {}, regex) for f in falas
+    }
+
     caminhos = {
-        f.id: pasta / f"{_chave(f, instancia.nome, escolhida, velocidade)}.flac"
+        f.id: pasta / f"{_chave(falado[f.id], instancia.nome, escolhida, velocidade)}.flac"
         for f in falas
     }
 
     _fase_sintese(
-        falas, caminhos, instancia, escolhida, velocidade,
+        falas, caminhos, falado, instancia, escolhida, velocidade,
         threads=threads, estado=estado, avisar=_avisar, parar=_parar,
     )
 
@@ -110,7 +121,7 @@ def sintetizar(
 # -- fase 1 --------------------------------------------------------------
 
 
-def _chave(fala: Fala, motor: str, voz: str, velocidade: float) -> str:
+def _chave(texto: str, motor: str, voz: str, velocidade: float) -> str:
     """Identidade do áudio desta fala.
 
     Repare no que *não* entra: o id da fala. Duas frases idênticas em
@@ -118,14 +129,19 @@ def _chave(fala: Fala, motor: str, voz: str, velocidade: float) -> str:
     num romance — compartilham o mesmo arquivo. E inserir um parágrafo no
     começo do livro, que renumera todos os ids seguintes, não invalida
     absolutamente nada.
+
+    O texto que entra aqui é o *final*, já com o dicionário de pronúncia
+    aplicado. É o que faz mudar uma entrada do dicionário re-sintetizar
+    exatamente as falas que a contêm, e nenhuma outra.
     """
-    assinatura = f"{motor}|{voz}|{velocidade:.3f}|{fala.texto}"
+    assinatura = f"{motor}|{voz}|{velocidade:.3f}|{texto}"
     return hashlib.sha256(assinatura.encode("utf-8")).hexdigest()[:24]
 
 
 def _fase_sintese(
     falas: list[Fala],
     caminhos: dict[str, Path],
+    falado: dict[str, str],
     motor: Motor,
     voz: str,
     velocidade: float,
@@ -137,7 +153,7 @@ def _fase_sintese(
 ) -> None:
     # Falas repetidas apontam para o mesmo arquivo; sintetizar uma vez
     # basta, e num diálogo isso corta um pedaço real do trabalho.
-    pendentes: dict[Path, Fala] = {}
+    pendentes: dict[Path, str] = {}
     quantas: Counter[Path] = Counter()
     for fala in falas:
         alvo = caminhos[fala.id]
@@ -145,7 +161,7 @@ def _fase_sintese(
             estado.do_cache += 1
             estado.prontas += 1
         else:
-            pendentes.setdefault(alvo, fala)
+            pendentes.setdefault(alvo, falado[fala.id])
             quantas[alvo] += 1
 
     avisar(estado)
@@ -154,11 +170,11 @@ def _fase_sintese(
 
     trava = threading.Lock()
 
-    def _uma(item: tuple[Path, Fala]) -> None:
-        alvo, fala = item
+    def _uma(item: tuple[Path, str]) -> None:
+        alvo, texto = item
         if parar():
             raise Cancelado("Síntese cancelada.")
-        _sintetizar_fala(fala, alvo, motor, voz, velocidade)
+        _sintetizar_fala(texto, alvo, motor, voz, velocidade)
         # O progresso conta falas, não arquivos: uma frase que se repete
         # cinco vezes no livro avança cinco passos de uma vez, e a barra
         # continua batendo com o total anunciado no começo.
@@ -184,11 +200,11 @@ def _threads_padrao() -> int:
 
 
 def _sintetizar_fala(
-    fala: Fala, destino: Path, motor: Motor, voz: str, velocidade: float
+    texto: str, destino: Path, motor: Motor, voz: str, velocidade: float
 ) -> None:
     import soundfile as sf
 
-    amostras = motor.sintetizar(fala.texto, voz=voz, velocidade=velocidade)
+    amostras = motor.sintetizar(texto, voz=voz, velocidade=velocidade)
     amostras = normalizar_volume(aparar(amostras, motor.taxa))
 
     # Grava em parcial e renomeia: um Ctrl-C no meio da escrita deixaria
@@ -286,6 +302,7 @@ def audio_de_uma_fala(
     motor: str | None = None,
     voz: str | None = None,
     velocidade: float = 1.0,
+    pronuncia: dict[str, str] | None = None,
     cache: Path,
 ) -> Path:
     """Sintetiza uma fala isolada e devolve o arquivo dela, do cache.
@@ -297,9 +314,10 @@ def audio_de_uma_fala(
     """
     instancia, escolhida = abrir(motor, voz)
     cache.mkdir(parents=True, exist_ok=True)
-    destino = cache / f"{_chave(fala, instancia.nome, escolhida, velocidade)}.flac"
+    texto = _pronuncia.aplicar(fala.texto, pronuncia or {})
+    destino = cache / f"{_chave(texto, instancia.nome, escolhida, velocidade)}.flac"
     if not destino.exists():
-        _sintetizar_fala(fala, destino, instancia, escolhida, velocidade)
+        _sintetizar_fala(texto, destino, instancia, escolhida, velocidade)
     return destino
 
 

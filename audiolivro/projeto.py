@@ -82,6 +82,16 @@ class Projeto:
         self.trilha = trilha
         trilha.salvar(self.pasta / NOME_TRILHA)
 
+    def pronuncia(self) -> dict[str, str]:
+        from audiolivro.texto import pronuncia as _p
+
+        return _p.carregar(self.pasta)
+
+    def gravar_pronuncia(self, dicionario: dict[str, str]) -> None:
+        from audiolivro.texto import pronuncia as _p
+
+        _p.salvar(self.pasta, dicionario)
+
     def posicao(self) -> dict:
         arquivo = self.pasta / NOME_POSICAO
         if arquivo.exists():

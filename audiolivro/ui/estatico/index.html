@@ -36,7 +36,7 @@
 
     <div class="fila">
       <button id="procurar">Escolher no Finder…</button>
-      <input type="text" id="caminho" placeholder="ou cole um caminho: ~/Downloads/livro.epub">
+      <input type="text" id="caminho" aria-label="Caminho do arquivo" placeholder="ou cole um caminho: ~/Downloads/livro.epub">
       <button id="abrir-caminho">Abrir</button>
     </div>
 
@@ -46,7 +46,7 @@
     </div>
   </details>
 
-  <div id="erro-abrir" class="erro" hidden></div>
+  <div id="erro-abrir" class="erro" role="alert" hidden></div>
   <p class="aviso" id="onde-fica"></p>
 </section>
 
@@ -73,6 +73,32 @@
   </p>
 
   <div class="sumario" id="p-sumario"></div>
+
+  <details class="pronuncia" id="pronuncia">
+    <summary><span class="mais">🗣</span> Como pronunciar <span class="conta" id="pr-conta"></span></summary>
+    <p class="aviso">
+      Nome próprio, marca ou palavra estrangeira que a voz erra. A
+      correção vale para o livro inteiro e sobrevive a reextrair — escreva
+      foneticamente, do jeito que deve soar.
+    </p>
+    <table class="tabela-pronuncia">
+      <thead>
+        <tr><th>Palavra no livro</th><th>Como falar</th><th>Falas</th><th></th></tr>
+      </thead>
+      <tbody id="pr-lista"></tbody>
+      <tfoot>
+        <tr>
+          <td><input type="text" id="pr-termo" aria-label="Palavra como aparece no livro" placeholder="Cinérea" autocomplete="off"></td>
+          <td><input type="text" id="pr-como" aria-label="Como a palavra deve soar" placeholder="Cinêrea" autocomplete="off"></td>
+          <td colspan="2">
+            <button id="pr-ouvir" aria-label="Ouvir como vai soar" title="Ouvir como vai soar">▶</button>
+            <button id="pr-adicionar" class="principal">Adicionar</button>
+          </td>
+        </tr>
+      </tfoot>
+    </table>
+    <div id="pr-erro" class="erro" role="alert" hidden></div>
+  </details>
 
   <div class="escolhas">
     <div>
@@ -116,21 +142,23 @@
   </div>
 
   <div class="progresso" id="progresso" hidden>
-    <div class="trilho"><div class="cheio" id="p-cheio"></div></div>
-    <div class="rotulo">
+    <div class="trilho" role="progressbar" id="p-barra"
+         aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"
+         aria-label="Progresso da geração"><div class="cheio" id="p-cheio"></div></div>
+    <div class="rotulo" aria-live="polite">
       <span id="p-mensagem">…</span>
       <span id="p-percentual"></span>
     </div>
   </div>
 
-  <div id="erro-preparar" class="erro" hidden></div>
+  <div id="erro-preparar" class="erro" role="alert" hidden></div>
 
   <p class="aviso" id="p-destino"></p>
 </section>
 
 <!-- ============================================================ ouvir -->
 <section id="ouvir" hidden>
-  <aside>
+  <aside aria-label="Capítulos e ferramentas">
     <h1 id="o-titulo">…</h1>
     <p class="autor" id="o-autor"></p>
     <div class="voltar">
@@ -144,23 +172,23 @@
     <ol id="o-sumario"></ol>
   </aside>
 
-  <main id="palco"><div class="texto" id="texto"></div></main>
+  <main id="palco" aria-label="Texto do livro"><div class="texto" id="texto"></div></main>
 
-  <footer>
-    <div class="trilho" id="o-trilho">
+  <footer aria-label="Controles de reprodução">
+    <div class="trilho" id="o-trilho" role="slider" tabindex="0" aria-label="Posição no audiobook" aria-valuemin="0" aria-valuenow="0">
       <div class="marcas" id="o-marcas"></div>
       <div class="decorrido" id="o-decorrido"></div>
     </div>
     <div class="fila">
-      <button id="o-voltar15" title="15 segundos atrás (←)">−15s</button>
-      <button class="principal" id="o-tocar" title="Espaço">▶︎ Ouvir</button>
-      <button id="o-avancar15" title="15 segundos à frente (→)">+15s</button>
+      <button id="o-voltar15" aria-label="Voltar 15 segundos" title="15 segundos atrás (←)">−15s</button>
+      <button class="principal" id="o-tocar" aria-label="Tocar ou pausar" title="Espaço">▶︎ Ouvir</button>
+      <button id="o-avancar15" aria-label="Avançar 15 segundos" title="15 segundos à frente (→)">+15s</button>
       <span class="tempo" id="o-tempo">0:00 / 0:00</span>
       <span class="espaco"></span>
       <span class="agora" id="o-capitulo"></span>
-      <button id="o-baixar" title="Baixar para enviar a alguém">↓ Baixar</button>
+      <button id="o-baixar" aria-label="Baixar o audiobook" title="Baixar para enviar a alguém">↓ Baixar</button>
       <button class="discreto" id="o-revelar" title="Mostrar o arquivo na pasta">Pasta</button>
-      <select id="o-velocidade" title="Velocidade">
+      <select id="o-velocidade" aria-label="Velocidade de reprodução" title="Velocidade">
         <option value="0.8">0,8×</option>
         <option value="0.9">0,9×</option>
         <option value="1" selected>1×</option>
@@ -181,7 +209,7 @@
     Reescreva à vontade, inclusive foneticamente. Vale na próxima geração,
     e só o que mudou é refeito.
   </p>
-  <textarea id="editor-texto"></textarea>
+  <textarea id="editor-texto" aria-label="Texto que será falado"></textarea>
   <div class="acoes">
     <button id="editor-fechar">Cancelar</button>
     <button id="editor-pular-bloco">Não ler o parágrafo</button>
@@ -190,7 +218,7 @@
   </div>
 </dialog>
 
-<button id="editar-flutuante" hidden title="Corrigir como esta frase é lida">✎ editar</button>
+<button id="editar-flutuante" hidden aria-label="Corrigir como esta frase é lida" title="Corrigir como esta frase é lida">✎ editar</button>
 
 <dialog id="exportar">
   <h3>Baixar o audiobook</h3>
@@ -219,7 +247,7 @@
   <p class="aviso" id="ex-nota"></p>
   <div class="progresso" id="ex-progresso" hidden>
     <div class="trilho"><div class="cheio" id="ex-cheio"></div></div>
-    <div class="rotulo"><span id="ex-mensagem">…</span><span id="ex-pct"></span></div>
+    <div class="rotulo" aria-live="polite"><span id="ex-mensagem">…</span><span id="ex-pct"></span></div>
   </div>
   <div class="acoes">
     <button id="ex-fechar">Fechar</button>
@@ -236,6 +264,7 @@
   </div>
 </dialog>
 
+<p id="anuncio" class="so-leitor" aria-live="assertive"></p>
 <audio id="som" preload="metadata"></audio>
 <script src="/app.js"></script>
 </body>
