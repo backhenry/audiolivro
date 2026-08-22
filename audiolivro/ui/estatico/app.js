@@ -404,8 +404,12 @@ function desenharPreparar(livro) {
   const fora = (livro.falas_no_livro || livro.falas) - livro.falas;
   $("p-falas").innerHTML = livro.falas.toLocaleString("pt-BR")
     + (fora > 0 ? ` <span class="fora-conta">de ${livro.falas_no_livro}</span>` : "");
-  $("p-duracao").textContent = hms(livro.previsao.duracao_audio);
-  $("p-tempo").textContent = "~" + hms(livro.previsao.tempo_de_sintese);
+  // Unidade sempre à vista neste painel. "2:40" é lido como duas horas e
+  // quarenta com a mesma facilidade que dois minutos e quarenta, e a
+  // diferença entre as duas leituras é a diferença entre gerar agora e
+  // deixar para a noite.
+  $("p-duracao").textContent = comUnidade(livro.previsao.duracao_audio);
+  $("p-tempo").textContent = "~" + comUnidade(livro.previsao.tempo_de_sintese);
   $("p-tamanho").textContent = Math.round(livro.previsao.tamanho_m4b / 1e6) + " MB";
 
   $("p-sumario").innerHTML = livro.estrutura
@@ -993,6 +997,14 @@ function hms(s) {
   if (!isFinite(s) || s < 0) return "0:00";
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), g = Math.floor(s % 60);
   return h ? `${h}h${String(m).padStart(2, "0")}` : `${m}:${String(g).padStart(2, "0")}`;
+}
+
+function comUnidade(s) {
+  if (!isFinite(s) || s < 1) return "instantâneo";
+  const h = Math.floor(s / 3600), m = Math.round((s % 3600) / 60);
+  if (h) return m ? `${h}h${String(m).padStart(2, "0")}` : `${h}h`;
+  if (s < 60) return `${Math.round(s)}s`;
+  return `${m}min`;
 }
 
 function tamanho(bytes) {
