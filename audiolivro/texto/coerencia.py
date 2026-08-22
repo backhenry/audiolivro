@@ -194,7 +194,24 @@ def marginais_repetidas(
         contagem.update(vistas)
 
     minimo = max(2, int(len(paginas) * limiar))
-    return {sig for sig, n in contagem.items() if n >= minimo and sig}
+    candidatas = {sig for sig, n in contagem.items() if n >= minimo and sig}
+    if not candidatas:
+        return candidatas
+
+    # Segundo teste: com que frequência a linha aparece no livro inteiro?
+    #
+    # Um cabeçalho de corrida aparece uma vez por página, no máximo. Texto
+    # de corpo que calha de se repetir aparece muitas vezes na mesma
+    # página — e como `assinatura` troca dígito por '#', num livro de
+    # linhas curtas e parecidas dezenas de linhas diferentes colapsam na
+    # mesma assinatura. Sem este teste, a detecção condena o corpo do
+    # texto e o livro é extraído vazio, sem erro nenhum: o defeito mais
+    # perigoso possível, porque some com tudo em silêncio.
+    no_livro: Counter[str] = Counter(
+        assinatura(l) for pagina in paginas for l in pagina if l.strip()
+    )
+    teto = len(paginas) * 1.5
+    return {sig for sig in candidatas if no_livro[sig] <= teto}
 
 
 def descartavel(linha: str, repetidas: set[str]) -> bool:

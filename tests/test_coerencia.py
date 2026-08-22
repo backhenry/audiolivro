@@ -90,6 +90,27 @@ def test_linha_longa_nunca_e_cabecalho() -> None:
     assert assinatura("UMBERTO ECO 3") in marginais  # o cabeçalho curto, sim
 
 
+def test_texto_de_corpo_repetido_nao_e_confundido_com_cabecalho() -> None:
+    """O defeito mais perigoso que esta função pode ter.
+
+    `assinatura` troca dígito por '#', então num livro de linhas curtas e
+    parecidas — uma lista numerada, uma tabela de conteúdo, um índice
+    remissivo — dezenas de linhas diferentes colapsam na mesma
+    assinatura. Sem o teto de frequência, a detecção condena o corpo do
+    texto e o livro sai vazio, sem erro nenhum.
+
+    O que separa os dois é quantas vezes a linha aparece: cabeçalho de
+    corrida, uma por página; corpo repetido, muitas na mesma página.
+    """
+    paginas = [
+        [f"Item {n * 10 + i} do catálogo" for i in range(10)] + ["CABECALHO 1"]
+        for n in range(8)
+    ]
+    marginais = marginais_repetidas(paginas)
+    assert assinatura("Item 1 do catálogo") not in marginais
+    assert assinatura("CABECALHO 1") in marginais
+
+
 def test_poucas_paginas_nao_dao_amostra() -> None:
     paginas = [["TÍTULO 1", "texto"], ["TÍTULO 2", "texto"]]
     assert marginais_repetidas(paginas) == set()
