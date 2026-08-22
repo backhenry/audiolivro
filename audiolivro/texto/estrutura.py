@@ -37,7 +37,7 @@ _RE_CAPITULO = re.compile(
     r"posf[áa]cio|ap[êe]ndice|anexo|nota do autor|agradecimentos)\b",
     re.IGNORECASE,
 )
-_RE_SO_NUMERAL = re.compile(r"^\s*(\d{1,3}|[IVXLCDM]{1,7})\s*[.\-—–]?\s*$")
+_RE_SO_NUMERAL = re.compile(r"^\s*(\d{1,3}|[IVXLCDM]{1,15})\s*[.\-—–]?\s*$")
 _RE_PONTUACAO_FINAL = re.compile(r"[.!?,;:]$")
 # O número que abre a nota é a chamada dela, não conteúdo. Lido em voz
 # alta, "um. Ver Auerbach" começa a nota com um número solto que o
